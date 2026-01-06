@@ -7,7 +7,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/ports"
-	shareduow "github.com/cristiano-pacheco/go-online-auction/internal/shared/uow"
+	shareduow "github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/uow"
 )
 
 var _ ports.AuctionUnitOfWorkFactory = (*AuctionUnitOfWorkFactory)(nil)

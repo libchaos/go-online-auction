@@ -12,7 +12,7 @@ import (
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/infra/entity"
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/infra/mapper"
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/ports"
-	"github.com/cristiano-pacheco/go-online-auction/internal/shared/uow"
+	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/uow"
 )
 
 var _ ports.AuctionRepository = (*PostgresAuctionRepository)(nil)
