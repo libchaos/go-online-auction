@@ -1,8 +1,10 @@
 package errs
 
 import (
+	"errors"
 	"net/http"
 
+	domainerrs "github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/errs"
 	"github.com/cristiano-pacheco/go-online-auction/pkg/errs"
 )
 
@@ -31,3 +33,29 @@ var (
 	ErrInvalidAuctionID = errs.New("AUCTION_12", "Invalid auction ID", http.StatusBadRequest, nil)
 	ErrAuctionExpired   = errs.New("AUCTION_13", "Auction has expired", http.StatusBadRequest, nil)
 )
+
+var domainToHTTPErrorMap = []struct {
+	domainError error
+	httpError   error
+}{
+	{domainerrs.ErrAuctionNotFound, ErrAuctionNotFound},
+	{domainerrs.ErrBidNotFound, ErrBidNotFound},
+	{domainerrs.ErrConcurrencyConflict, ErrOptimisticLockFailed},
+	{domainerrs.ErrAuctionCanOnlyStartFromDraft, ErrAuctionAlreadyStarted},
+	{domainerrs.ErrBidsOnlyOnActiveAuctions, ErrAuctionNotActive},
+	{domainerrs.ErrAuctionExpired, ErrAuctionExpired},
+	{domainerrs.ErrAuctionCanOnlyCloseFromActive, ErrAuctionAlreadyClosed},
+	{domainerrs.ErrAuctionCanOnlyCancelFromDraftOrActive, ErrAuctionCancelled},
+	{domainerrs.ErrFirstBidMustBePositive, ErrBidAmountInvalid},
+	{domainerrs.ErrBidMustExceedHighest, ErrBidTooLow},
+	{domainerrs.ErrEndTimeMustBeInFuture, ErrInvalidEndTime},
+}
+
+func MapDomainError(err error) error {
+	for _, mapping := range domainToHTTPErrorMap {
+		if errors.Is(err, mapping.domainError) {
+			return mapping.httpError
+		}
+	}
+	return err
+}
