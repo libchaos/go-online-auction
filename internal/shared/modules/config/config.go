@@ -9,13 +9,14 @@ import (
 )
 
 type Config struct {
-	Environment string `mapstructure:"ENVIRONMENT"`
-	HTTPPort    uint   `mapstructure:"HTTP_PORT"`
-	CORS        CORS   `mapstructure:",squash"`
-	DB          DB     `mapstructure:",squash"`
-	App         App    `mapstructure:",squash"`
-	Log         Log    `mapstructure:",squash"`
-	Redis       Redis  `mapstructure:",squash"`
+	Environment string     `mapstructure:"ENVIRONMENT"`
+	HTTPPort    uint       `mapstructure:"HTTP_PORT"`
+	CORS        CORS       `mapstructure:",squash"`
+	DB          DB         `mapstructure:",squash"`
+	App         App        `mapstructure:",squash"`
+	Log         Log        `mapstructure:",squash"`
+	Redis       Redis      `mapstructure:",squash"`
+	HTTPServer  HTTPServer `mapstructure:",squash"`
 }
 
 const EnvProduction = "production"
