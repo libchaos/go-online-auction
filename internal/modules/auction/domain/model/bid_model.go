@@ -1,8 +1,9 @@
 package model
 
 import (
-	"errors"
 	"time"
+
+	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/errs"
 )
 
 type BidModel struct {
@@ -35,7 +36,7 @@ func RestoreBidModel(
 	createdAt, updatedAt time.Time,
 ) (BidModel, error) {
 	if id == 0 {
-		return BidModel{}, errors.New("bid id must be greater than zero")
+		return BidModel{}, errs.ErrBidIDRequired
 	}
 
 	if err := validateBid(auctionID, userID); err != nil {
@@ -78,11 +79,11 @@ func (b *BidModel) UpdatedAt() time.Time {
 
 func validateBid(auctionID, userID uint64) error {
 	if auctionID == 0 {
-		return errors.New("auction id must be greater than zero")
+		return errs.ErrAuctionIDRequired
 	}
 
 	if userID == 0 {
-		return errors.New("user id must be greater than zero")
+		return errs.ErrUserIDRequired
 	}
 
 	return nil

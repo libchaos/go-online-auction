@@ -1,13 +1,12 @@
 package model
 
 import (
-	"errors"
 	"time"
 
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/enum"
+	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/errs"
 )
 
-// AuctionModel represents the auction aggregate root
 type AuctionModel struct {
 	id           uint64
 	listingID    uint64
@@ -20,9 +19,8 @@ type AuctionModel struct {
 	updatedAt    time.Time
 }
 
-// NewAuctionModel creates a new auction in Draft state with version 0
-func NewAuctionModel(listingID uint64, startTime, endTime time.Time) (AuctionModel, error) {
-	if err := validateAuction(listingID, startTime, endTime); err != nil {
+func NewAuctionModel(listingID uint64, endTime time.Time) (AuctionModel, error) {
+	if err := validateNewAuction(listingID, endTime); err != nil {
 		return AuctionModel{}, err
 	}
 
@@ -34,7 +32,6 @@ func NewAuctionModel(listingID uint64, startTime, endTime time.Time) (AuctionMod
 	now := time.Now().UTC()
 	return AuctionModel{
 		listingID:    listingID,
-		startTime:    startTime.UTC(),
 		endTime:      endTime.UTC(),
 		state:        draftState,
 		highestBidID: nil,
@@ -44,7 +41,6 @@ func NewAuctionModel(listingID uint64, startTime, endTime time.Time) (AuctionMod
 	}, nil
 }
 
-// RestoreAuctionModel reconstitutes an existing auction from persistence
 func RestoreAuctionModel(
 	id, listingID uint64,
 	startTime, endTime time.Time,
@@ -54,10 +50,10 @@ func RestoreAuctionModel(
 	createdAt, updatedAt time.Time,
 ) (AuctionModel, error) {
 	if id == 0 {
-		return AuctionModel{}, errors.New("auction id must be greater than zero")
+		return AuctionModel{}, errs.ErrAuctionIDRequired
 	}
 
-	if err := validateAuction(listingID, startTime, endTime); err != nil {
+	if err := validateRestoreAuction(listingID, endTime); err != nil {
 		return AuctionModel{}, err
 	}
 
@@ -112,7 +108,7 @@ func (a *AuctionModel) UpdatedAt() time.Time {
 
 func (a *AuctionModel) Start() error {
 	if a.state.String() != enum.EnumAuctionStateDraft {
-		return errors.New("auction can only be started from draft state")
+		return errs.ErrAuctionCanOnlyStartFromDraft
 	}
 
 	activeState, err := enum.NewAuctionStateEnum(enum.EnumAuctionStateActive)
@@ -120,31 +116,28 @@ func (a *AuctionModel) Start() error {
 		return err
 	}
 
+	now := time.Now().UTC()
+	a.startTime = now
 	a.state = activeState
 	a.version++
-	a.updatedAt = time.Now().UTC()
+	a.updatedAt = now
 
 	return nil
 }
 
-// PlaceBid validates and accepts a bid on the auction
 func (a *AuctionModel) PlaceBid(bidID uint64, amount MoneyModel, currentHighestBid *BidModel) error {
-	// Validate auction is in Active state
 	if a.state.String() != enum.EnumAuctionStateActive {
-		return errors.New("bids can only be placed on active auctions")
+		return errs.ErrBidsOnlyOnActiveAuctions
 	}
 
-	// Validate auction has not expired
 	if time.Now().UTC().After(a.endTime) {
-		return errors.New("auction has expired")
+		return errs.ErrAuctionExpired
 	}
 
-	// Validate bid amount
 	if err := validateBidAmount(amount, currentHighestBid); err != nil {
 		return err
 	}
 
-	// Update highest bid
 	a.highestBidID = &bidID
 	a.version++
 	a.updatedAt = time.Now().UTC()
@@ -152,10 +145,9 @@ func (a *AuctionModel) PlaceBid(bidID uint64, amount MoneyModel, currentHighestB
 	return nil
 }
 
-// Close transitions the auction from Active to Closed state
 func (a *AuctionModel) Close() error {
 	if a.state.String() != enum.EnumAuctionStateActive {
-		return errors.New("auction can only be closed from active state")
+		return errs.ErrAuctionCanOnlyCloseFromActive
 	}
 
 	closedState, err := enum.NewAuctionStateEnum(enum.EnumAuctionStateClosed)
@@ -170,13 +162,11 @@ func (a *AuctionModel) Close() error {
 	return nil
 }
 
-// Cancel transitions the auction to Cancelled state
 func (a *AuctionModel) Cancel() error {
 	currentState := a.state.String()
 
-	// Can only cancel from Draft or Active state
 	if currentState != enum.EnumAuctionStateDraft && currentState != enum.EnumAuctionStateActive {
-		return errors.New("auction can only be cancelled from draft or active state")
+		return errs.ErrAuctionCanOnlyCancelFromDraftOrActive
 	}
 
 	cancelledState, err := enum.NewAuctionStateEnum(enum.EnumAuctionStateCancelled)
@@ -191,10 +181,7 @@ func (a *AuctionModel) Cancel() error {
 	return nil
 }
 
-// CheckAndCloseIfExpired automatically closes the auction if it has expired
-// Returns true if the auction was closed, false otherwise
 func (a *AuctionModel) CheckAndCloseIfExpired() (bool, error) {
-	// Only close if auction is Active and has expired
 	if a.state.String() != enum.EnumAuctionStateActive {
 		return false, nil
 	}
@@ -203,7 +190,6 @@ func (a *AuctionModel) CheckAndCloseIfExpired() (bool, error) {
 		return false, nil
 	}
 
-	// Auction has expired, close it
 	if err := a.Close(); err != nil {
 		return false, err
 	}
@@ -211,31 +197,40 @@ func (a *AuctionModel) CheckAndCloseIfExpired() (bool, error) {
 	return true, nil
 }
 
-func validateAuction(listingID uint64, startTime, endTime time.Time) error {
+func validateNewAuction(listingID uint64, endTime time.Time) error {
 	if listingID == 0 {
-		return errors.New("listing id must be greater than zero")
+		return errs.ErrListingIDRequired
 	}
 
-	if endTime.Before(startTime) || endTime.Equal(startTime) {
-		return errors.New("end time must be after start time")
+	if endTime.IsZero() {
+		return errs.ErrEndTimeRequired
 	}
 
 	return nil
 }
 
-// validateBidAmount validates the bid amount against business rules
+func validateRestoreAuction(listingID uint64, endTime time.Time) error {
+	if listingID == 0 {
+		return errs.ErrListingIDRequired
+	}
+
+	if endTime.IsZero() {
+		return errs.ErrEndTimeRequired
+	}
+
+	return nil
+}
+
 func validateBidAmount(amount MoneyModel, currentHighestBid *BidModel) error {
-	// First bid: any positive amount is valid
 	if currentHighestBid == nil {
 		if amount.AmountInCents() == 0 {
-			return errors.New("first bid amount must be greater than zero")
+			return errs.ErrFirstBidMustBePositive
 		}
 		return nil
 	}
 
-	// Subsequent bids: must exceed current highest bid
 	if !amount.IsGreaterThan(currentHighestBid.Amount()) {
-		return errors.New("bid amount must exceed current highest bid")
+		return errs.ErrBidMustExceedHighest
 	}
 
 	return nil
