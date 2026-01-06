@@ -33,7 +33,12 @@ func NewBidModel(auctionID, userID uint64, amount MoneyModel, status enum.BidSta
 	}, nil
 }
 
-func RestoreBidModel(id, auctionID, userID uint64, amount MoneyModel, status enum.BidStatusEnum, createdAt, updatedAt time.Time) (BidModel, error) {
+func RestoreBidModel(
+	id, auctionID, userID uint64,
+	amount MoneyModel,
+	status enum.BidStatusEnum,
+	createdAt, updatedAt time.Time,
+) (BidModel, error) {
 	if id == 0 {
 		return BidModel{}, errors.New("bid id must be greater than zero")
 	}
