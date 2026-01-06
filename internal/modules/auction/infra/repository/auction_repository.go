@@ -149,7 +149,89 @@ func (r *PostgresAuctionRepository) Update(ctx context.Context, auction model.Au
 	return nil
 }
 
-// isPgLockError checks if the error is a PostgreSQL lock acquisition failure
+func (r *PostgresAuctionRepository) FindAllPaginated(
+	ctx context.Context,
+	state *string,
+	limit, offset int,
+) ([]model.AuctionModel, error) {
+	var query string
+	var args []any
+
+	if state != nil {
+		query = `
+			SELECT id, listing_id, start_time, end_time, state, highest_bid_id, version, created_at, updated_at
+			FROM auctions
+			WHERE state = $1
+			ORDER BY created_at DESC
+			LIMIT $2 OFFSET $3`
+		args = []any{*state, limit, offset}
+	} else {
+		query = `
+			SELECT id, listing_id, start_time, end_time, state, highest_bid_id, version, created_at, updated_at
+			FROM auctions
+			ORDER BY created_at DESC
+			LIMIT $1 OFFSET $2`
+		args = []any{limit, offset}
+	}
+
+	rows, err := r.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	auctions := []model.AuctionModel{}
+	for rows.Next() {
+		var e entity.AuctionEntity
+		if scanErr := rows.Scan(
+			&e.ID,
+			&e.ListingID,
+			&e.StartTime,
+			&e.EndTime,
+			&e.State,
+			&e.HighestBidID,
+			&e.Version,
+			&e.CreatedAt,
+			&e.UpdatedAt,
+		); scanErr != nil {
+			return nil, scanErr
+		}
+
+		auction, mapErr := r.mapper.ToDomain(e)
+		if mapErr != nil {
+			return nil, mapErr
+		}
+		auctions = append(auctions, auction)
+	}
+
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return nil, rowsErr
+	}
+
+	return auctions, nil
+}
+
+func (r *PostgresAuctionRepository) Count(ctx context.Context, state *string) (uint64, error) {
+	var query string
+	var args []any
+
+	if state != nil {
+		query = `SELECT COUNT(*) FROM auctions WHERE state = $1`
+		args = []any{*state}
+	} else {
+		query = `SELECT COUNT(*) FROM auctions`
+		args = []any{}
+	}
+
+	var count uint64
+	err := r.db.QueryRow(ctx, query, args...).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
 func isPgLockError(err error) bool {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {

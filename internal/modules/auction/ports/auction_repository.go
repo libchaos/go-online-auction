@@ -11,4 +11,6 @@ type AuctionRepository interface {
 	FindByID(ctx context.Context, id uint64) (model.AuctionModel, error)
 	FindByIDForUpdate(ctx context.Context, id uint64) (model.AuctionModel, error)
 	Update(ctx context.Context, auction model.AuctionModel) error
+	FindAllPaginated(ctx context.Context, state *string, limit, offset int) ([]model.AuctionModel, error)
+	Count(ctx context.Context, state *string) (uint64, error)
 }
