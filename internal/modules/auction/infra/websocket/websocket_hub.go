@@ -73,7 +73,10 @@ func (h *Hub) Run(ctx context.Context) {
 		case client := <-h.unregister:
 			h.subscriberRegistry.Remove(client.auctionID, client)
 			client.Close()
-		case message := <-channel:
+		case message, ok := <-channel:
+			if !ok || message == nil {
+				return
+			}
 			auctionID := extractAuctionID(message.Channel)
 			if auctionID == 0 {
 				h.logger.Warn().Str("channel", message.Channel).Msg("failed to extract auction ID from channel")

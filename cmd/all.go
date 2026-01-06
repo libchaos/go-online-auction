@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"context"
+	"errors"
+	"net/http"
 
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
@@ -49,7 +51,7 @@ func startHTTPServer(
 		OnStart: func(_ context.Context) error {
 			log.Info().Str("addr", server.Addr()).Msg("starting HTTP server")
 			go func() {
-				if err := server.Start(); err != nil {
+				if err := server.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 					log.Error().Err(err).Msg("HTTP server error")
 				}
 			}()
