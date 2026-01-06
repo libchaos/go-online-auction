@@ -2,6 +2,10 @@ package event
 
 import "time"
 
+const (
+	AuctionStartedEventType = "auction_started"
+)
+
 type AuctionStartedEvent struct {
 	DomainEvent
 	auctionID uint64

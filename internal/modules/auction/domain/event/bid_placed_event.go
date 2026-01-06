@@ -2,6 +2,10 @@ package event
 
 import "github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/model"
 
+const (
+	BidPlacedEventType = "bid_placed"
+)
+
 type BidPlacedEvent struct {
 	DomainEvent
 	bidID     uint64

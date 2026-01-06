@@ -160,3 +160,5 @@ func (s *BidMapperTestSuite) TestToEntity_SupersededStatus_ReturnsEntityWithSupe
 	s.Equal("superseded", result.Status)
 	s.Equal("EUR", result.Currency)
 }
+
+

@@ -2,6 +2,10 @@ package event
 
 import "github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/model"
 
+const (
+	AuctionEndedEventType = "auction_ended"
+)
+
 type AuctionEndedEvent struct {
 	DomainEvent
 	auctionID    uint64
