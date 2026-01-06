@@ -9,10 +9,6 @@ import (
 )
 
 func New(cfg Config) (redis.UniversalClient, error) {
-	if err := cfg.validate(); err != nil {
-		return nil, fmt.Errorf("invalid redis config: %w", err)
-	}
-
 	var client redis.UniversalClient
 
 	switch cfg.ClientType {
@@ -21,7 +17,9 @@ func New(cfg Config) (redis.UniversalClient, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse redis url: %w", err)
 		}
-		if opts.Password != "" {
+		opts.Password = cfg.Password
+		opts.DB = cfg.DB
+		if cfg.Password != "" {
 			opts.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
 		}
 		client = redis.NewClient(opts)
@@ -31,7 +29,8 @@ func New(cfg Config) (redis.UniversalClient, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse redis cluster url: %w", err)
 		}
-		if opts.Password != "" {
+		opts.Password = cfg.Password
+		if cfg.Password != "" {
 			opts.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
 		}
 		client = redis.NewClusterClient(opts)

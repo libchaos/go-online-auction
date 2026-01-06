@@ -11,6 +11,8 @@ type UniversalClient = goredis.UniversalClient
 func New(cfg config.Config) (UniversalClient, error) {
 	return redis.New(redis.Config{
 		URL:        cfg.Redis.URL,
-		ClientType: redis.ClientType(cfg.Redis.ClientType),
+		Password:   cfg.Redis.Password,
+		DB:         cfg.Redis.DB,
+		ClientType: cfg.Redis.ClientType,
 	})
 }
