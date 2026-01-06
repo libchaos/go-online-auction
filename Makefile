@@ -27,7 +27,7 @@ install-libs:
 
 .PHONY: run
 run:
-	go run ./main.go server
+	go run ./main.go all
 
 .PHONY: migrate
 migrate:
