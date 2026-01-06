@@ -6,10 +6,9 @@ import (
 	"unicode"
 )
 
-// MoneyModel represents an immutable monetary amount with currency
 type MoneyModel struct {
 	amountInCents uint64
-	currency      string
+	currency      string // TODO: extract it to a value object
 }
 
 // NewMoneyModel creates a new MoneyModel value object
@@ -19,7 +18,7 @@ func NewMoneyModel(amountInCents uint64, currency string) (MoneyModel, error) {
 	currency = strings.TrimSpace(currency)
 	currency = strings.ToUpper(currency)
 
-	if err := validateMoneyModel(amountInCents, currency); err != nil {
+	if err := validateCurrency(currency); err != nil {
 		return MoneyModel{}, err
 	}
 
@@ -29,12 +28,10 @@ func NewMoneyModel(amountInCents uint64, currency string) (MoneyModel, error) {
 	}, nil
 }
 
-// AmountInCents returns the amount in cents
 func (m MoneyModel) AmountInCents() uint64 {
 	return m.amountInCents
 }
 
-// Currency returns the currency code
 func (m MoneyModel) Currency() string {
 	return m.currency
 }
@@ -48,8 +45,7 @@ func (m MoneyModel) IsGreaterThan(other MoneyModel) (bool, error) {
 	return m.amountInCents > other.amountInCents, nil
 }
 
-// validateMoneyModel validates the currency
-func validateMoneyModel(amountInCents uint64, currency string) error {
+func validateCurrency(currency string) error {
 	if currency == "" {
 		return errors.New("currency cannot be empty")
 	}
