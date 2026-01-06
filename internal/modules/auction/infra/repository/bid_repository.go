@@ -137,3 +137,49 @@ func (r *PostgresBidRepository) Update(ctx context.Context, bid model.BidModel) 
 
 	return nil
 }
+
+func (r *PostgresBidRepository) FindTopBidsByAuctionID(
+	ctx context.Context,
+	auctionID uint64,
+	limit int,
+) ([]model.BidModel, error) {
+	query := `
+		SELECT id, auction_id, user_id, amount_in_cents, created_at, updated_at
+		FROM bids
+		WHERE auction_id = $1
+		ORDER BY amount_in_cents DESC
+		LIMIT $2`
+
+	rows, err := r.db.Query(ctx, query, auctionID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	bids := []model.BidModel{}
+	for rows.Next() {
+		var e entity.BidEntity
+		if scanErr := rows.Scan(
+			&e.ID,
+			&e.AuctionID,
+			&e.UserID,
+			&e.AmountInCents,
+			&e.CreatedAt,
+			&e.UpdatedAt,
+		); scanErr != nil {
+			return nil, scanErr
+		}
+
+		bid, mapErr := r.mapper.ToDomain(e)
+		if mapErr != nil {
+			return nil, mapErr
+		}
+		bids = append(bids, bid)
+	}
+
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return nil, rowsErr
+	}
+
+	return bids, nil
+}
