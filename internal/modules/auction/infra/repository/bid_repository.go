@@ -93,7 +93,7 @@ func (r *PostgresBidRepository) FindByAuctionID(ctx context.Context, auctionID u
 	var bids []model.BidModel
 	for rows.Next() {
 		var e entity.BidEntity
-		if err := rows.Scan(
+		if scanErr := rows.Scan(
 			&e.ID,
 			&e.AuctionID,
 			&e.UserID,
@@ -102,19 +102,19 @@ func (r *PostgresBidRepository) FindByAuctionID(ctx context.Context, auctionID u
 			&e.Status,
 			&e.CreatedAt,
 			&e.UpdatedAt,
-		); err != nil {
-			return nil, err
+		); scanErr != nil {
+			return nil, scanErr
 		}
 
-		bid, err := r.mapper.ToDomain(e)
-		if err != nil {
-			return nil, err
+		bid, mapErr := r.mapper.ToDomain(e)
+		if mapErr != nil {
+			return nil, mapErr
 		}
 		bids = append(bids, bid)
 	}
 
-	if err := rows.Err(); err != nil {
-		return nil, err
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return nil, rowsErr
 	}
 
 	return bids, nil

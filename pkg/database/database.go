@@ -26,10 +26,10 @@ func OpenConnection(cfg Config) *pgxpool.Pool {
 	}
 
 	// Set connection pool settings
-	if cfg.MaxOpenConnections > 0 {
+	if cfg.MaxOpenConnections > 0 && cfg.MaxOpenConnections <= math.MaxInt32 {
 		poolConfig.MaxConns = int32(cfg.MaxOpenConnections)
 	}
-	if cfg.MaxIdleConnections > 0 {
+	if cfg.MaxIdleConnections > 0 && cfg.MaxIdleConnections <= math.MaxInt32 {
 		poolConfig.MinConns = int32(cfg.MaxIdleConnections)
 	}
 
@@ -52,8 +52,8 @@ func OpenConnection(cfg Config) *pgxpool.Pool {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultPingTimeout)
 	defer cancel()
 
-	if err := pool.Ping(ctx); err != nil {
-		panic(fmt.Errorf("failed to ping database: %w", err))
+	if pingErr := pool.Ping(ctx); pingErr != nil {
+		panic(fmt.Errorf("failed to ping database: %w", pingErr))
 	}
 
 	return pool
@@ -119,6 +119,8 @@ func (l *pgxLogger) Log(ctx context.Context, level tracelog.LogLevel, msg string
 	}
 
 	switch level {
+	case tracelog.LogLevelNone:
+		// No logging
 	case tracelog.LogLevelTrace, tracelog.LogLevelDebug:
 		l.logger.LogAttrs(ctx, slog.LevelDebug, msg, attrs...)
 	case tracelog.LogLevelInfo:
@@ -127,8 +129,6 @@ func (l *pgxLogger) Log(ctx context.Context, level tracelog.LogLevel, msg string
 		l.logger.LogAttrs(ctx, slog.LevelWarn, msg, attrs...)
 	case tracelog.LogLevelError:
 		l.logger.LogAttrs(ctx, slog.LevelError, msg, attrs...)
-	default:
-		l.logger.LogAttrs(ctx, slog.LevelInfo, msg, attrs...)
 	}
 }
 

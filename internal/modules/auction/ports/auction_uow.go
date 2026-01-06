@@ -14,4 +14,3 @@ type AuctionUnitOfWork interface {
 type AuctionUnitOfWorkFactory interface {
 	Begin(ctx context.Context) (AuctionUnitOfWork, error)
 }
-

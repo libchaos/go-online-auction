@@ -26,12 +26,12 @@ func (tm *TxManager) WithTransaction(ctx context.Context, fn func(ctx context.Co
 		return ErrTransactionFailed
 	}
 
-	if err := fn(ctx, tx); err != nil {
+	if fnErr := fn(ctx, tx); fnErr != nil {
 		_ = tx.Rollback(ctx)
-		return err
+		return fnErr
 	}
 
-	if err := tx.Commit(ctx); err != nil {
+	if commitErr := tx.Commit(ctx); commitErr != nil {
 		return ErrTransactionFailed
 	}
 
