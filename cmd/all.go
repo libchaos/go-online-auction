@@ -13,11 +13,10 @@ import (
 	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/logger"
 	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/redis"
 	pkghttpserver "github.com/cristiano-pacheco/go-online-auction/pkg/httpserver"
-	pkglogger "github.com/cristiano-pacheco/go-online-auction/pkg/logger"
 )
 
-var serveCmd = &cobra.Command{
-	Use:   "serve",
+var allCmd = &cobra.Command{
+	Use:   "all",
 	Short: "Start the HTTP server",
 	Long:  `Start the auction HTTP server with WebSocket support for real-time updates.`,
 	Run: func(_ *cobra.Command, _ []string) {
@@ -26,7 +25,7 @@ var serveCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(serveCmd)
+	rootCmd.AddCommand(allCmd)
 }
 
 func runServer() {
@@ -36,9 +35,7 @@ func runServer() {
 		database.Module,
 		redis.Module,
 		httpserver.Module,
-
 		auction.Module,
-
 		fx.Invoke(startHTTPServer),
 	).Run()
 }
@@ -46,7 +43,7 @@ func runServer() {
 func startHTTPServer(
 	lc fx.Lifecycle,
 	server *pkghttpserver.Server,
-	log pkglogger.Logger,
+	log logger.Logger,
 ) {
 	lc.Append(fx.Hook{
 		OnStart: func(_ context.Context) error {

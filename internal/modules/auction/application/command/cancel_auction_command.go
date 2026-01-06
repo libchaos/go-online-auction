@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/ports"
-	"github.com/cristiano-pacheco/go-online-auction/pkg/logger"
+	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/logger"
 )
 
 type CancelAuctionCommandInput struct {

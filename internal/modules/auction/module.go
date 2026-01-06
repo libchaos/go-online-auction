@@ -15,8 +15,8 @@ import (
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/infra/uow"
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/infra/websocket"
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/ports"
+	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/logger"
 	"github.com/cristiano-pacheco/go-online-auction/pkg/httpserver"
-	"github.com/cristiano-pacheco/go-online-auction/pkg/logger"
 )
 
 var Module = fx.Module(
