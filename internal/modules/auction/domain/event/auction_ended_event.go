@@ -9,7 +9,8 @@ type AuctionEndedEvent struct {
 	finalAmount  *model.MoneyModel
 }
 
-// winningBidID and finalAmount can be nil if the auction ended without any bids
+// NewAuctionEndedEvent creates a new auction ended event.
+// winningBidID and finalAmount can be nil if the auction ended without any bids.
 func NewAuctionEndedEvent(auctionID uint64, winningBidID *uint64, finalAmount *model.MoneyModel) AuctionEndedEvent {
 	return AuctionEndedEvent{
 		DomainEvent:  newDomainEvent(),

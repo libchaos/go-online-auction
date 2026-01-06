@@ -6,6 +6,8 @@ import (
 	"unicode"
 )
 
+const currencyCodeLength = 3
+
 type MoneyModel struct {
 	amountInCents uint64
 	currency      string // TODO: extract it to a value object
@@ -50,7 +52,7 @@ func validateCurrency(currency string) error {
 		return errors.New("currency cannot be empty")
 	}
 
-	if len(currency) != 3 {
+	if len(currency) != currencyCodeLength {
 		return errors.New("currency must be a 3-letter code")
 	}
 
