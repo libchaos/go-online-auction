@@ -6,7 +6,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/errs"
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/ports"
 	shareduow "github.com/cristiano-pacheco/go-online-auction/internal/shared/uow"
 )
@@ -38,7 +37,7 @@ func (f *AuctionUnitOfWorkFactory) Begin(ctx context.Context) (ports.AuctionUnit
 		IsoLevel: pgx.ReadCommitted,
 	})
 	if err != nil {
-		return nil, errs.ErrTransactionFailed
+		return nil, shareduow.ErrTransactionFailed
 	}
 
 	return &AuctionUnitOfWork{

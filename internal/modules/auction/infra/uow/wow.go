@@ -5,8 +5,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/errs"
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/ports"
+	shareduow "github.com/cristiano-pacheco/go-online-auction/internal/shared/uow"
 )
 
 var _ ports.AuctionUnitOfWork = (*AuctionUnitOfWork)(nil)
@@ -37,7 +37,7 @@ func (uow *AuctionUnitOfWork) Complete(ctx context.Context) error {
 	uow.completed = true
 
 	if err := uow.tx.Commit(ctx); err != nil {
-		return errs.ErrTransactionFailed
+		return shareduow.ErrTransactionFailed
 	}
 	return nil
 }
