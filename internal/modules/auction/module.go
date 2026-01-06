@@ -1,0 +1,104 @@
+package auction
+
+import (
+	"context"
+
+	"go.uber.org/fx"
+
+	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/application/command"
+	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/application/query"
+	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/infra/event/dispatcher"
+	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/infra/http/chi/handler"
+	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/infra/http/chi/router"
+	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/infra/mapper"
+	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/infra/repository"
+	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/infra/uow"
+	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/infra/websocket"
+	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/ports"
+	"github.com/cristiano-pacheco/go-online-auction/pkg/httpserver"
+	"github.com/cristiano-pacheco/go-online-auction/pkg/logger"
+)
+
+var Module = fx.Module(
+	"auction",
+
+	fx.Provide(mapper.NewAuctionMapper),
+	fx.Provide(mapper.NewBidMapper),
+
+	fx.Provide(
+		fx.Annotate(
+			repository.NewPostgresAuctionRepository,
+			fx.As(new(ports.AuctionRepository)),
+		),
+	),
+	fx.Provide(
+		fx.Annotate(
+			repository.NewPostgresBidRepository,
+			fx.As(new(ports.BidRepository)),
+		),
+	),
+
+	fx.Provide(
+		fx.Annotate(
+			uow.NewAuctionUnitOfWorkFactory,
+			fx.As(new(ports.AuctionUnitOfWorkFactory)),
+		),
+	),
+
+	fx.Provide(
+		fx.Annotate(
+			dispatcher.NewRedisAuctionStartedEventDispatcher,
+			fx.As(new(ports.AuctionStartedEventDispatcher)),
+		),
+	),
+	fx.Provide(
+		fx.Annotate(
+			dispatcher.NewRedisBidPlacedEventDispatcher,
+			fx.As(new(ports.BidPlacedEventDispatcher)),
+		),
+	),
+	fx.Provide(
+		fx.Annotate(
+			dispatcher.NewRedisAuctionEndedEventDispatcher,
+			fx.As(new(ports.AuctionEndedEventDispatcher)),
+		),
+	),
+
+	fx.Provide(websocket.NewAuctionSubscriberRegistry),
+	fx.Provide(websocket.NewHub),
+
+	fx.Provide(command.NewCreateAuctionCommand),
+	fx.Provide(command.NewStartAuctionCommand),
+	fx.Provide(command.NewPlaceBidCommand),
+	fx.Provide(command.NewCloseAuctionCommand),
+	fx.Provide(command.NewCancelAuctionCommand),
+
+	fx.Provide(query.NewGetAuctionByIDQuery),
+	fx.Provide(query.NewListAuctionsQuery),
+
+	fx.Provide(handler.NewAuctionHandler),
+
+	fx.Invoke(registerLifecycle),
+)
+
+func registerLifecycle(
+	lc fx.Lifecycle,
+	hub *websocket.Hub,
+	server *httpserver.Server,
+	auctionHandler *handler.AuctionHandler,
+	logger logger.Logger,
+) {
+	router.RegisterRoutes(server, auctionHandler)
+
+	lc.Append(fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			logger.Info().Msg("starting websocket hub")
+			go hub.Run(ctx)
+			return nil
+		},
+		OnStop: func(_ context.Context) error {
+			logger.Info().Msg("stopping websocket hub")
+			return hub.Shutdown()
+		},
+	})
+}
