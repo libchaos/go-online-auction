@@ -3,8 +3,6 @@ package model
 import (
 	"errors"
 	"time"
-
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/enum"
 )
 
 type BidModel struct {
@@ -12,12 +10,11 @@ type BidModel struct {
 	auctionID uint64
 	userID    uint64
 	amount    MoneyModel
-	status    enum.BidStatusEnum
 	createdAt time.Time
 	updatedAt time.Time
 }
 
-func NewBidModel(auctionID, userID uint64, amount MoneyModel, status enum.BidStatusEnum) (BidModel, error) {
+func NewBidModel(auctionID, userID uint64, amount MoneyModel) (BidModel, error) {
 	if err := validateBid(auctionID, userID); err != nil {
 		return BidModel{}, err
 	}
@@ -27,7 +24,6 @@ func NewBidModel(auctionID, userID uint64, amount MoneyModel, status enum.BidSta
 		auctionID: auctionID,
 		userID:    userID,
 		amount:    amount,
-		status:    status,
 		createdAt: now,
 		updatedAt: now,
 	}, nil
@@ -36,7 +32,6 @@ func NewBidModel(auctionID, userID uint64, amount MoneyModel, status enum.BidSta
 func RestoreBidModel(
 	id, auctionID, userID uint64,
 	amount MoneyModel,
-	status enum.BidStatusEnum,
 	createdAt, updatedAt time.Time,
 ) (BidModel, error) {
 	if id == 0 {
@@ -52,7 +47,6 @@ func RestoreBidModel(
 		auctionID: auctionID,
 		userID:    userID,
 		amount:    amount,
-		status:    status,
 		createdAt: createdAt,
 		updatedAt: updatedAt,
 	}, nil
@@ -74,31 +68,12 @@ func (b *BidModel) Amount() MoneyModel {
 	return b.amount
 }
 
-func (b *BidModel) Status() enum.BidStatusEnum {
-	return b.status
-}
-
 func (b *BidModel) CreatedAt() time.Time {
 	return b.createdAt
 }
 
 func (b *BidModel) UpdatedAt() time.Time {
 	return b.updatedAt
-}
-
-func (b *BidModel) MarkAsSuperseded() error {
-	if b.status.String() != enum.EnumBidStatusAccepted {
-		return errors.New("only accepted bids can be marked as superseded")
-	}
-
-	supersededStatus, err := enum.NewBidStatusEnum(enum.EnumBidStatusSuperseded)
-	if err != nil {
-		return err
-	}
-
-	b.status = supersededStatus
-	b.updatedAt = time.Now().UTC()
-	return nil
 }
 
 func validateBid(auctionID, userID uint64) error {

@@ -49,7 +49,6 @@ func (d *RedisAuctionEndedEventDispatcher) Dispatch(ctx context.Context, evt eve
 	if finalAmount := evt.FinalAmount(); finalAmount != nil {
 		payloadData.FinalAmount = &MoneyPayload{
 			AmountInCents: finalAmount.AmountInCents(),
-			Currency:      finalAmount.Currency(),
 		}
 	}
 

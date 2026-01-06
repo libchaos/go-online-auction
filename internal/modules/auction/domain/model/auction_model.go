@@ -234,12 +234,7 @@ func validateBidAmount(amount MoneyModel, currentHighestBid *BidModel) error {
 	}
 
 	// Subsequent bids: must exceed current highest bid
-	isGreater, err := amount.IsGreaterThan(currentHighestBid.Amount())
-	if err != nil {
-		return err
-	}
-
-	if !isGreater {
+	if !amount.IsGreaterThan(currentHighestBid.Amount()) {
 		return errors.New("bid amount must exceed current highest bid")
 	}
 

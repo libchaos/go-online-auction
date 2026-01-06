@@ -27,7 +27,6 @@ type BidPlacedPayloadData struct {
 
 type MoneyPayload struct {
 	AmountInCents uint64 `json:"amount_in_cents"`
-	Currency      string `json:"currency"`
 }
 
 type RedisBidPlacedEventDispatcher struct {
@@ -58,7 +57,6 @@ func (d *RedisBidPlacedEventDispatcher) Dispatch(ctx context.Context, evt event.
 			UserID: evt.UserID(),
 			Amount: MoneyPayload{
 				AmountInCents: evt.Amount().AmountInCents(),
-				Currency:      evt.Amount().Currency(),
 			},
 		},
 	}

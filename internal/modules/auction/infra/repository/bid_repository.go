@@ -32,16 +32,14 @@ func (r *PostgresBidRepository) Create(ctx context.Context, bid model.BidModel) 
 	e := r.mapper.ToEntity(bid)
 
 	query := `
-		INSERT INTO bids (auction_id, user_id, amount_in_cents, currency, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO bids (auction_id, user_id, amount_in_cents, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id`
 
 	err := r.db.QueryRow(ctx, query,
 		e.AuctionID,
 		e.UserID,
 		e.AmountInCents,
-		e.Currency,
-		e.Status,
 		e.CreatedAt,
 		e.UpdatedAt,
 	).Scan(&e.ID)
@@ -51,7 +49,7 @@ func (r *PostgresBidRepository) Create(ctx context.Context, bid model.BidModel) 
 
 func (r *PostgresBidRepository) FindByID(ctx context.Context, id uint64) (model.BidModel, error) {
 	query := `
-		SELECT id, auction_id, user_id, amount_in_cents, currency, status, created_at, updated_at
+		SELECT id, auction_id, user_id, amount_in_cents, created_at, updated_at
 		FROM bids
 		WHERE id = $1`
 
@@ -61,8 +59,6 @@ func (r *PostgresBidRepository) FindByID(ctx context.Context, id uint64) (model.
 		&e.AuctionID,
 		&e.UserID,
 		&e.AmountInCents,
-		&e.Currency,
-		&e.Status,
 		&e.CreatedAt,
 		&e.UpdatedAt,
 	)
@@ -79,7 +75,7 @@ func (r *PostgresBidRepository) FindByID(ctx context.Context, id uint64) (model.
 
 func (r *PostgresBidRepository) FindByAuctionID(ctx context.Context, auctionID uint64) ([]model.BidModel, error) {
 	query := `
-		SELECT id, auction_id, user_id, amount_in_cents, currency, status, created_at, updated_at
+		SELECT id, auction_id, user_id, amount_in_cents, created_at, updated_at
 		FROM bids
 		WHERE auction_id = $1
 		ORDER BY created_at ASC`
@@ -98,8 +94,6 @@ func (r *PostgresBidRepository) FindByAuctionID(ctx context.Context, auctionID u
 			&e.AuctionID,
 			&e.UserID,
 			&e.AmountInCents,
-			&e.Currency,
-			&e.Status,
 			&e.CreatedAt,
 			&e.UpdatedAt,
 		); scanErr != nil {
@@ -125,11 +119,10 @@ func (r *PostgresBidRepository) Update(ctx context.Context, bid model.BidModel) 
 
 	query := `
 		UPDATE bids
-		SET status = $1, updated_at = $2
-		WHERE id = $3`
+		SET updated_at = $1
+		WHERE id = $2`
 
 	result, err := r.db.Exec(ctx, query,
-		e.Status,
 		e.UpdatedAt,
 		e.ID,
 	)
