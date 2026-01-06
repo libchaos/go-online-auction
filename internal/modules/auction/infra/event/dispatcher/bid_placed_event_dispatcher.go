@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/event"
+	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/ports"
 	"github.com/cristiano-pacheco/go-online-auction/pkg/logger"
 	"github.com/redis/go-redis/v9"
 )
@@ -43,6 +44,8 @@ func NewRedisBidPlacedEventDispatcher(
 		logger:      logger,
 	}
 }
+
+var _ ports.BidPlacedEventDispatcher = (*RedisBidPlacedEventDispatcher)(nil)
 
 func (d *RedisBidPlacedEventDispatcher) Dispatch(ctx context.Context, evt event.BidPlacedEvent) error {
 	payload := BidPlacedPayload{
