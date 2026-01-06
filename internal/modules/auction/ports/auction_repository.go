@@ -9,5 +9,6 @@ import (
 type AuctionRepository interface {
 	Create(ctx context.Context, auction model.AuctionModel) error
 	FindByID(ctx context.Context, id uint64) (model.AuctionModel, error)
+	FindByIDForUpdate(ctx context.Context, id uint64) (model.AuctionModel, error)
 	Update(ctx context.Context, auction model.AuctionModel) error
 }
