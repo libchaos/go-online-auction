@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:17.5-alpine
+    volumes:
+      - postgres:/data/postgres
+    environment:
+      POSTGRES_DB: go-online-auction
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      PGDATA: /data/postgres
+    ports:
+      - '5432:5432'
+    networks:
+      - backend
+
+  redis:
+    image: redis:8-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - backend
+
+volumes:
+  postgres-data:
+  redis-data:
+  postgres:
+
+networks:
+  backend:
