@@ -17,15 +17,11 @@ type PlaceBidCommandInput struct {
 }
 
 type PlaceBidCommandOutput struct {
-	ID        uint64
-	AuctionID uint64
-	UserID    uint64
-	Amount    MoneyOutput
-	CreatedAt time.Time
-}
-
-type MoneyOutput struct {
+	ID            uint64
+	AuctionID     uint64
+	UserID        uint64
 	AmountInCents uint64
+	CreatedAt     time.Time
 }
 
 type PlaceBidCommand struct {
@@ -135,12 +131,10 @@ func (c *PlaceBidCommand) Execute(
 	}
 
 	return PlaceBidCommandOutput{
-		ID:        bid.ID(),
-		AuctionID: bid.AuctionID(),
-		UserID:    bid.UserID(),
-		Amount: MoneyOutput{
-			AmountInCents: bid.Amount().AmountInCents(),
-		},
-		CreatedAt: bid.CreatedAt(),
+		ID:            bid.ID(),
+		AuctionID:     bid.AuctionID(),
+		UserID:        bid.UserID(),
+		AmountInCents: bid.Amount().AmountInCents(),
+		CreatedAt:     bid.CreatedAt(),
 	}, nil
 }

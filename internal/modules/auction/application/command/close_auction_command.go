@@ -75,7 +75,8 @@ func (c *CloseAuctionCommand) Execute(
 	var finalAmount *model.MoneyModel
 	if auction.HighestBidID() != nil {
 		winningBidID = auction.HighestBidID()
-		winningBid, err := uow.BidRepository().FindByID(ctx, *winningBidID)
+		var winningBid model.BidModel
+		winningBid, err = uow.BidRepository().FindByID(ctx, *winningBidID)
 		if err != nil {
 			c.logger.Error().Err(err).
 				Uint64("auction_id", input.AuctionID).
