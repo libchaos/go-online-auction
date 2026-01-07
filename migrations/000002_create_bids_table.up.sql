@@ -22,8 +22,3 @@ CREATE INDEX idx_bids_user_id_created_at ON bids(user_id, created_at DESC);
 -- Composite index for finding highest bid per auction efficiently
 -- Covers: WHERE auction_id = $1 ORDER BY amount_in_cents DESC LIMIT 1
 CREATE INDEX idx_bids_auction_id_amount ON bids(auction_id, amount_in_cents DESC);
-
--- Add foreign key from auctions.highest_bid_id to bids.id
-ALTER TABLE auctions 
-    ADD CONSTRAINT fk_auctions_highest_bid 
-    FOREIGN KEY (highest_bid_id) REFERENCES bids(id);
