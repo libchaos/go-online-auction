@@ -107,7 +107,6 @@ func (h *AuctionHandler) List(w http.ResponseWriter, r *http.Request) {
 			State:                   auction.State,
 			StartTime:               auction.StartTime,
 			EndTime:                 auction.EndTime,
-			HighestBidID:            nil,
 			HighestBidAmountInCents: auction.HighestBidAmountInCents,
 			CreatedAt:               auction.CreatedAt,
 		})
@@ -155,7 +154,6 @@ func (h *AuctionHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 			State:                   output.Auction.State,
 			StartTime:               output.Auction.StartTime,
 			EndTime:                 output.Auction.EndTime,
-			HighestBidID:            output.Auction.HighestBidID,
 			HighestBidAmountInCents: output.Auction.HighestBidAmountInCents,
 			CreatedAt:               output.Auction.CreatedAt,
 		},

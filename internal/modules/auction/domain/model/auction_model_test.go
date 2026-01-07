@@ -25,7 +25,6 @@ func TestNewAuctionModel(t *testing.T) {
 		state := auction.State()
 		require.Equal(t, enum.EnumAuctionStateDraft, state.String())
 		require.Nil(t, auction.HighestBidAmount())
-		require.Nil(t, auction.HighestBidID())
 		require.Equal(t, uint64(1), auction.Version())
 	})
 
@@ -63,7 +62,6 @@ func TestRestoreAuctionModel(t *testing.T) {
 		startTime := now
 		endTime := now.Add(24 * time.Hour)
 		state, _ := enum.NewAuctionStateEnum(enum.EnumAuctionStateActive)
-		highestBidID := uint64(200)
 		highestBidAmount := uint64(5000)
 		version := uint64(3)
 
@@ -74,7 +72,6 @@ func TestRestoreAuctionModel(t *testing.T) {
 			&startTime,
 			endTime,
 			state,
-			&highestBidID,
 			&highestBidAmount,
 			version,
 			now,
@@ -91,8 +88,6 @@ func TestRestoreAuctionModel(t *testing.T) {
 		require.Equal(t, version, auction.Version())
 		require.Equal(t, now, auction.CreatedAt())
 		require.Equal(t, now, auction.UpdatedAt())
-		require.NotNil(t, auction.HighestBidID())
-		require.Equal(t, highestBidID, *auction.HighestBidID())
 		require.NotNil(t, auction.HighestBidAmount())
 		require.Equal(t, highestBidAmount, *auction.HighestBidAmount())
 	})
@@ -109,7 +104,6 @@ func TestRestoreAuctionModel(t *testing.T) {
 			&now,
 			now.Add(24*time.Hour),
 			state,
-			nil,
 			nil,
 			0,
 			now,
@@ -133,7 +127,6 @@ func TestRestoreAuctionModel(t *testing.T) {
 			now.Add(24*time.Hour),
 			state,
 			nil,
-			nil,
 			0,
 			now,
 			now,
@@ -155,7 +148,6 @@ func TestRestoreAuctionModel(t *testing.T) {
 			&now,
 			time.Time{},
 			state,
-			nil,
 			nil,
 			0,
 			now,
@@ -208,17 +200,14 @@ func TestAuctionModel_PlaceBid(t *testing.T) {
 		auction, _ := model.NewAuctionModel(listingID, endTime)
 		_ = auction.Start()
 
-		bidID := uint64(200)
 		amountInCents := uint64(5000)
 		amount := model.NewMoneyModel(amountInCents)
 
 		// Act
-		err := auction.PlaceBid(bidID, amount, nil)
+		err := auction.PlaceBid(amount)
 
 		// Assert
 		require.NoError(t, err)
-		require.NotNil(t, auction.HighestBidID())
-		require.Equal(t, bidID, *auction.HighestBidID())
 		require.NotNil(t, auction.HighestBidAmount())
 		require.Equal(t, amountInCents, *auction.HighestBidAmount())
 		require.Equal(t, uint64(3), auction.Version())
@@ -231,30 +220,18 @@ func TestAuctionModel_PlaceBid(t *testing.T) {
 		auction, _ := model.NewAuctionModel(listingID, endTime)
 		_ = auction.Start()
 
-		firstBidID := uint64(200)
 		firstAmountInCents := uint64(1000)
 		firstAmount := model.NewMoneyModel(firstAmountInCents)
-		_ = auction.PlaceBid(firstBidID, firstAmount, nil)
+		_ = auction.PlaceBid(firstAmount)
 
-		currentHighestBid, _ := model.RestoreBidModel(
-			firstBidID,
-			1,
-			1,
-			firstAmount,
-			time.Now(),
-			time.Now(),
-		)
-
-		secondBidID := uint64(201)
 		secondAmountInCents := uint64(2000)
 		secondAmount := model.NewMoneyModel(secondAmountInCents)
 
 		// Act
-		err := auction.PlaceBid(secondBidID, secondAmount, &currentHighestBid)
+		err := auction.PlaceBid(secondAmount)
 
 		// Assert
 		require.NoError(t, err)
-		require.Equal(t, secondBidID, *auction.HighestBidID())
 		require.Equal(t, secondAmountInCents, *auction.HighestBidAmount())
 	})
 
@@ -264,11 +241,10 @@ func TestAuctionModel_PlaceBid(t *testing.T) {
 		endTime := time.Now().UTC().Add(24 * time.Hour)
 		auction, _ := model.NewAuctionModel(listingID, endTime)
 
-		bidID := uint64(200)
 		amount := model.NewMoneyModel(5000)
 
 		// Act
-		err := auction.PlaceBid(bidID, amount, nil)
+		err := auction.PlaceBid(amount)
 
 		// Assert
 		require.ErrorIs(t, err, errs.ErrBidsOnlyOnActiveAuctions)
@@ -288,17 +264,15 @@ func TestAuctionModel_PlaceBid(t *testing.T) {
 			pastEndTime,
 			state,
 			nil,
-			nil,
 			0,
 			now,
 			now,
 		)
 
-		bidID := uint64(200)
 		amount := model.NewMoneyModel(5000)
 
 		// Act
-		err := auction.PlaceBid(bidID, amount, nil)
+		err := auction.PlaceBid(amount)
 
 		// Assert
 		require.ErrorIs(t, err, errs.ErrAuctionExpired)
@@ -311,11 +285,10 @@ func TestAuctionModel_PlaceBid(t *testing.T) {
 		auction, _ := model.NewAuctionModel(listingID, endTime)
 		_ = auction.Start()
 
-		bidID := uint64(200)
 		amount := model.NewMoneyModel(0)
 
 		// Act
-		err := auction.PlaceBid(bidID, amount, nil)
+		err := auction.PlaceBid(amount)
 
 		// Assert
 		require.ErrorIs(t, err, errs.ErrFirstBidMustBePositive)
@@ -328,25 +301,13 @@ func TestAuctionModel_PlaceBid(t *testing.T) {
 		auction, _ := model.NewAuctionModel(listingID, endTime)
 		_ = auction.Start()
 
-		firstBidID := uint64(200)
 		firstAmount := model.NewMoneyModel(1000)
-		_ = auction.PlaceBid(firstBidID, firstAmount, nil)
+		_ = auction.PlaceBid(firstAmount)
 
-		currentHighestBid, errBid := model.RestoreBidModel(
-			firstBidID,
-			1,
-			1,
-			firstAmount,
-			time.Now(),
-			time.Now(),
-		)
-		require.NoError(t, errBid)
-
-		secondBidID := uint64(201)
 		secondAmount := model.NewMoneyModel(500)
 
 		// Act
-		err := auction.PlaceBid(secondBidID, secondAmount, &currentHighestBid)
+		err := auction.PlaceBid(secondAmount)
 
 		// Assert
 		require.ErrorIs(t, err, errs.ErrBidMustExceedHighest)
@@ -448,7 +409,6 @@ func TestAuctionModel_CheckAndCloseIfExpired(t *testing.T) {
 			&startTime,
 			pastEndTime,
 			activeState,
-			nil,
 			nil,
 			0,
 			now,

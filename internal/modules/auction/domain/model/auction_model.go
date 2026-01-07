@@ -13,7 +13,6 @@ type AuctionModel struct {
 	startTime        *time.Time // nil for draft auctions
 	endTime          time.Time
 	state            enum.AuctionStateEnum
-	highestBidID     *uint64
 	highestBidAmount *uint64 // nil if no bids yet
 	version          uint64  // for optimistic locking
 	createdAt        time.Time
@@ -35,7 +34,6 @@ func NewAuctionModel(listingID uint64, endTime time.Time) (AuctionModel, error) 
 		listingID:        listingID,
 		endTime:          endTime.UTC(),
 		state:            draftState,
-		highestBidID:     nil,
 		highestBidAmount: nil,
 		version:          1,
 		createdAt:        now,
@@ -48,7 +46,6 @@ func RestoreAuctionModel(
 	startTime *time.Time,
 	endTime time.Time,
 	state enum.AuctionStateEnum,
-	highestBidID *uint64,
 	highestBidAmount *uint64,
 	version uint64,
 	createdAt, updatedAt time.Time,
@@ -73,7 +70,6 @@ func RestoreAuctionModel(
 		startTime:        normalizedStartTime,
 		endTime:          endTime.UTC(),
 		state:            state,
-		highestBidID:     highestBidID,
 		highestBidAmount: highestBidAmount,
 		version:          version,
 		createdAt:        createdAt.UTC(),
@@ -99,10 +95,6 @@ func (a *AuctionModel) EndTime() time.Time {
 
 func (a *AuctionModel) State() enum.AuctionStateEnum {
 	return a.state
-}
-
-func (a *AuctionModel) HighestBidID() *uint64 {
-	return a.highestBidID
 }
 
 func (a *AuctionModel) HighestBidAmount() *uint64 {
@@ -140,7 +132,7 @@ func (a *AuctionModel) Start() error {
 	return nil
 }
 
-func (a *AuctionModel) PlaceBid(bidID uint64, amount MoneyModel, currentHighestBid *BidModel) error {
+func (a *AuctionModel) PlaceBid(amount MoneyModel) error {
 	if a.state.String() != enum.EnumAuctionStateActive {
 		return errs.ErrBidsOnlyOnActiveAuctions
 	}
@@ -149,11 +141,18 @@ func (a *AuctionModel) PlaceBid(bidID uint64, amount MoneyModel, currentHighestB
 		return errs.ErrAuctionExpired
 	}
 
-	if err := validateBidAmount(amount, currentHighestBid); err != nil {
-		return err
+	// Validate bid amount against current highest
+	if a.highestBidAmount == nil {
+		if amount.AmountInCents() == 0 {
+			return errs.ErrFirstBidMustBePositive
+		}
+	} else {
+		currentHighest := NewMoneyModel(*a.highestBidAmount)
+		if !amount.IsGreaterThan(currentHighest) {
+			return errs.ErrBidMustExceedHighest
+		}
 	}
 
-	a.highestBidID = &bidID
 	amountInCents := amount.AmountInCents()
 	a.highestBidAmount = &amountInCents
 	a.version++

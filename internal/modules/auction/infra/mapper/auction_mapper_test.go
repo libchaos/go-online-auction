@@ -27,17 +27,17 @@ func TestAuctionMapperSuite(t *testing.T) {
 func (s *AuctionMapperTestSuite) TestToDomain_ValidEntity_ReturnsAuctionModel() {
 	// Arrange
 	now := time.Now().UTC()
-	highestBidID := uint64(100)
+	highestBidAmount := uint64(5000)
 	e := entity.AuctionEntity{
-		ID:           1,
-		ListingID:    10,
-		StartTime:    &now,
-		EndTime:      now.Add(24 * time.Hour),
-		State:        "active",
-		HighestBidID: &highestBidID,
-		Version:      5,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		ID:                      1,
+		ListingID:               10,
+		StartTime:               &now,
+		EndTime:                 now.Add(24 * time.Hour),
+		State:                   "active",
+		HighestBidAmountInCents: &highestBidAmount,
+		Version:                 5,
+		CreatedAt:               now,
+		UpdatedAt:               now,
 	}
 
 	// Act
@@ -52,8 +52,8 @@ func (s *AuctionMapperTestSuite) TestToDomain_ValidEntity_ReturnsAuctionModel() 
 	s.Equal(e.EndTime.UTC(), result.EndTime())
 	state := result.State()
 	s.Equal(e.State, state.String())
-	s.NotNil(result.HighestBidID())
-	s.Equal(*e.HighestBidID, *result.HighestBidID())
+	s.NotNil(result.HighestBidAmount())
+	s.Equal(*e.HighestBidAmountInCents, *result.HighestBidAmount())
 	s.Equal(e.Version, result.Version())
 	s.Equal(e.CreatedAt.UTC(), result.CreatedAt())
 	s.Equal(e.UpdatedAt.UTC(), result.UpdatedAt())
@@ -63,15 +63,15 @@ func (s *AuctionMapperTestSuite) TestToDomain_NilHighestBidID_ReturnsAuctionMode
 	// Arrange
 	now := time.Now().UTC()
 	e := entity.AuctionEntity{
-		ID:           1,
-		ListingID:    10,
-		StartTime:    &now,
-		EndTime:      now.Add(24 * time.Hour),
-		State:        "draft",
-		HighestBidID: nil,
-		Version:      0,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		ID:                      1,
+		ListingID:               10,
+		StartTime:               &now,
+		EndTime:                 now.Add(24 * time.Hour),
+		State:                   "draft",
+		HighestBidAmountInCents: nil,
+		Version:                 0,
+		CreatedAt:               now,
+		UpdatedAt:               now,
 	}
 
 	// Act
@@ -79,22 +79,22 @@ func (s *AuctionMapperTestSuite) TestToDomain_NilHighestBidID_ReturnsAuctionMode
 
 	// Assert
 	s.Require().NoError(err)
-	s.Nil(result.HighestBidID())
+	s.Nil(result.HighestBidAmount())
 }
 
 func (s *AuctionMapperTestSuite) TestToDomain_InvalidState_ReturnsError() {
 	// Arrange
 	now := time.Now().UTC()
 	e := entity.AuctionEntity{
-		ID:           1,
-		ListingID:    10,
-		StartTime:    &now,
-		EndTime:      now.Add(24 * time.Hour),
-		State:        "invalid_state",
-		HighestBidID: nil,
-		Version:      0,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		ID:                      1,
+		ListingID:               10,
+		StartTime:               &now,
+		EndTime:                 now.Add(24 * time.Hour),
+		State:                   "invalid_state",
+		HighestBidAmountInCents: nil,
+		Version:                 0,
+		CreatedAt:               now,
+		UpdatedAt:               now,
 	}
 
 	// Act
@@ -108,7 +108,7 @@ func (s *AuctionMapperTestSuite) TestToDomain_InvalidState_ReturnsError() {
 func (s *AuctionMapperTestSuite) TestToEntity_ValidAuctionModel_ReturnsAuctionEntity() {
 	// Arrange
 	now := time.Now().UTC()
-	highestBidID := uint64(100)
+	highestBidAmount := uint64(5000)
 	state, _ := enum.NewAuctionStateEnum("active")
 	auction, err := model.RestoreAuctionModel(
 		1,
@@ -116,8 +116,7 @@ func (s *AuctionMapperTestSuite) TestToEntity_ValidAuctionModel_ReturnsAuctionEn
 		&now,
 		now.Add(24*time.Hour),
 		state,
-		&highestBidID,
-		nil,
+		&highestBidAmount,
 		5,
 		now,
 		now,
@@ -134,8 +133,8 @@ func (s *AuctionMapperTestSuite) TestToEntity_ValidAuctionModel_ReturnsAuctionEn
 	s.Equal(auction.EndTime(), result.EndTime)
 	auctionState := auction.State()
 	s.Equal(auctionState.String(), result.State)
-	s.NotNil(result.HighestBidID)
-	s.Equal(*auction.HighestBidID(), *result.HighestBidID)
+	s.NotNil(result.HighestBidAmountInCents)
+	s.Equal(*auction.HighestBidAmount(), *result.HighestBidAmountInCents)
 	s.Equal(auction.Version(), result.Version)
 	s.Equal(auction.CreatedAt(), result.CreatedAt)
 	s.Equal(auction.UpdatedAt(), result.UpdatedAt)
@@ -152,7 +151,6 @@ func (s *AuctionMapperTestSuite) TestToEntity_NilHighestBidID_ReturnsEntityWithN
 		now.Add(24*time.Hour),
 		state,
 		nil,
-		nil,
 		0,
 		now,
 		now,
@@ -163,14 +161,12 @@ func (s *AuctionMapperTestSuite) TestToEntity_NilHighestBidID_ReturnsEntityWithN
 	result := s.sut.ToEntity(auction)
 
 	// Assert
-	s.Nil(result.HighestBidID)
 	s.Nil(result.HighestBidAmountInCents)
 }
 
 func (s *AuctionMapperTestSuite) TestToDomain_WithHighestBidAmount_MapsCorrectly() {
 	// Arrange
 	now := time.Now().UTC()
-	highestBidID := uint64(100)
 	highestBidAmount := uint64(5000)
 	e := entity.AuctionEntity{
 		ID:                      1,
@@ -178,7 +174,6 @@ func (s *AuctionMapperTestSuite) TestToDomain_WithHighestBidAmount_MapsCorrectly
 		StartTime:               &now,
 		EndTime:                 now.Add(24 * time.Hour),
 		State:                   "active",
-		HighestBidID:            &highestBidID,
 		HighestBidAmountInCents: &highestBidAmount,
 		Version:                 5,
 		CreatedAt:               now,
@@ -203,7 +198,6 @@ func (s *AuctionMapperTestSuite) TestToDomain_NilHighestBidAmount_ReturnsNilAmou
 		StartTime:               &now,
 		EndTime:                 now.Add(24 * time.Hour),
 		State:                   "draft",
-		HighestBidID:            nil,
 		HighestBidAmountInCents: nil,
 		Version:                 0,
 		CreatedAt:               now,
@@ -221,7 +215,6 @@ func (s *AuctionMapperTestSuite) TestToDomain_NilHighestBidAmount_ReturnsNilAmou
 func (s *AuctionMapperTestSuite) TestToEntity_WithHighestBidAmount_MapsCorrectly() {
 	// Arrange
 	now := time.Now().UTC()
-	highestBidID := uint64(100)
 	highestBidAmount := uint64(5000)
 	state, _ := enum.NewAuctionStateEnum("active")
 	auction, err := model.RestoreAuctionModel(
@@ -230,7 +223,6 @@ func (s *AuctionMapperTestSuite) TestToEntity_WithHighestBidAmount_MapsCorrectly
 		&now,
 		now.Add(24*time.Hour),
 		state,
-		&highestBidID,
 		&highestBidAmount,
 		5,
 		now,

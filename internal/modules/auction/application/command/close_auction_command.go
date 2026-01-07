@@ -15,13 +15,12 @@ type CloseAuctionCommandInput struct {
 }
 
 type CloseAuctionCommandOutput struct {
-	ID           uint64
-	ListingID    uint64
-	State        string
-	HighestBidID *uint64
-	StartTime    *time.Time
-	EndTime      time.Time
-	UpdatedAt    time.Time
+	ID        uint64
+	ListingID uint64
+	State     string
+	StartTime *time.Time
+	EndTime   time.Time
+	UpdatedAt time.Time
 }
 
 type CloseAuctionCommand struct {
@@ -73,8 +72,7 @@ func (c *CloseAuctionCommand) Execute(
 
 	var winningBidID *uint64
 	var finalAmount *model.MoneyModel
-	if auction.HighestBidID() != nil && auction.HighestBidAmount() != nil {
-		winningBidID = auction.HighestBidID()
+	if auction.HighestBidAmount() != nil {
 		money := model.NewMoneyModel(*auction.HighestBidAmount())
 		finalAmount = &money
 	}
@@ -102,12 +100,11 @@ func (c *CloseAuctionCommand) Execute(
 
 	state := auction.State()
 	return CloseAuctionCommandOutput{
-		ID:           auction.ID(),
-		ListingID:    auction.ListingID(),
-		State:        state.String(),
-		HighestBidID: auction.HighestBidID(),
-		StartTime:    auction.StartTime(),
-		EndTime:      auction.EndTime(),
-		UpdatedAt:    auction.UpdatedAt(),
+		ID:        auction.ID(),
+		ListingID: auction.ListingID(),
+		State:     state.String(),
+		StartTime: auction.StartTime(),
+		EndTime:   auction.EndTime(),
+		UpdatedAt: auction.UpdatedAt(),
 	}, nil
 }

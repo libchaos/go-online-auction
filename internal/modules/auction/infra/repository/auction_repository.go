@@ -37,15 +37,14 @@ func (r *PostgresAuctionRepository) Create(
 	e := r.mapper.ToEntity(auction)
 
 	query := `
-		INSERT INTO auctions (listing_id, end_time, state, highest_bid_id, highest_bid_amount_in_cents, version, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO auctions (listing_id, end_time, state, highest_bid_amount_in_cents, version, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id`
 
 	err := r.db.QueryRow(ctx, query,
 		e.ListingID,
 		e.EndTime,
 		e.State,
-		e.HighestBidID,
 		e.HighestBidAmountInCents,
 		e.Version,
 		e.CreatedAt,
@@ -65,7 +64,7 @@ func (r *PostgresAuctionRepository) Create(
 
 func (r *PostgresAuctionRepository) FindByID(ctx context.Context, id uint64) (model.AuctionModel, error) {
 	query := `
-		SELECT id, listing_id, start_time, end_time, state, highest_bid_id, highest_bid_amount_in_cents, version, created_at, updated_at
+		SELECT id, listing_id, start_time, end_time, state, highest_bid_amount_in_cents, version, created_at, updated_at
 		FROM auctions
 		WHERE id = $1`
 
@@ -76,7 +75,6 @@ func (r *PostgresAuctionRepository) FindByID(ctx context.Context, id uint64) (mo
 		&e.StartTime,
 		&e.EndTime,
 		&e.State,
-		&e.HighestBidID,
 		&e.HighestBidAmountInCents,
 		&e.Version,
 		&e.CreatedAt,
@@ -97,7 +95,7 @@ func (r *PostgresAuctionRepository) FindByID(ctx context.Context, id uint64) (mo
 // Uses NOWAIT to fail fast under contention
 func (r *PostgresAuctionRepository) FindByIDForUpdate(ctx context.Context, id uint64) (model.AuctionModel, error) {
 	query := `
-		SELECT id, listing_id, start_time, end_time, state, highest_bid_id, highest_bid_amount_in_cents, version, created_at, updated_at
+		SELECT id, listing_id, start_time, end_time, state, highest_bid_amount_in_cents, version, created_at, updated_at
 		FROM auctions
 		WHERE id = $1
 		FOR UPDATE NOWAIT`
@@ -109,7 +107,6 @@ func (r *PostgresAuctionRepository) FindByIDForUpdate(ctx context.Context, id ui
 		&e.StartTime,
 		&e.EndTime,
 		&e.State,
-		&e.HighestBidID,
 		&e.HighestBidAmountInCents,
 		&e.Version,
 		&e.CreatedAt,
@@ -137,15 +134,14 @@ func (r *PostgresAuctionRepository) Update(ctx context.Context, auction model.Au
 	query := `
 		UPDATE auctions
 		SET listing_id = $1, start_time = $2, end_time = $3, state = $4, 
-			highest_bid_id = $5, highest_bid_amount_in_cents = $6, version = $7, updated_at = $8
-		WHERE id = $9 AND version = $10`
+			highest_bid_amount_in_cents = $5, version = $6, updated_at = $7
+		WHERE id = $8 AND version = $9`
 
 	result, err := r.db.Exec(ctx, query,
 		e.ListingID,
 		e.StartTime,
 		e.EndTime,
 		e.State,
-		e.HighestBidID,
 		e.HighestBidAmountInCents,
 		e.Version,
 		e.UpdatedAt,
@@ -175,7 +171,7 @@ func (r *PostgresAuctionRepository) FindAllPaginated(
 	if state != nil {
 		stateStr := state.String()
 		query = `
-			SELECT id, listing_id, start_time, end_time, state, highest_bid_id, highest_bid_amount_in_cents, version, created_at, updated_at
+			SELECT id, listing_id, start_time, end_time, state, highest_bid_amount_in_cents, version, created_at, updated_at
 			FROM auctions
 			WHERE state = $1
 			ORDER BY created_at DESC
@@ -183,7 +179,7 @@ func (r *PostgresAuctionRepository) FindAllPaginated(
 		args = []any{stateStr, limit, offset}
 	} else {
 		query = `
-			SELECT id, listing_id, start_time, end_time, state, highest_bid_id, highest_bid_amount_in_cents, version, created_at, updated_at
+			SELECT id, listing_id, start_time, end_time, state, highest_bid_amount_in_cents, version, created_at, updated_at
 			FROM auctions
 			ORDER BY created_at DESC
 			LIMIT $1 OFFSET $2`
@@ -205,7 +201,6 @@ func (r *PostgresAuctionRepository) FindAllPaginated(
 			&e.StartTime,
 			&e.EndTime,
 			&e.State,
-			&e.HighestBidID,
 			&e.HighestBidAmountInCents,
 			&e.Version,
 			&e.CreatedAt,

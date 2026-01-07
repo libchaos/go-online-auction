@@ -25,7 +25,6 @@ type AuctionOutput struct {
 	State                   string
 	StartTime               *time.Time
 	EndTime                 time.Time
-	HighestBidID            *uint64
 	HighestBidAmountInCents *uint64
 	CreatedAt               time.Time
 	UpdatedAt               time.Time
@@ -89,7 +88,6 @@ func (q *GetAuctionByIDQuery) Execute(
 			State:                   state.String(),
 			StartTime:               auction.StartTime(),
 			EndTime:                 auction.EndTime(),
-			HighestBidID:            auction.HighestBidID(),
 			HighestBidAmountInCents: auction.HighestBidAmount(),
 			CreatedAt:               auction.CreatedAt(),
 			UpdatedAt:               auction.UpdatedAt(),

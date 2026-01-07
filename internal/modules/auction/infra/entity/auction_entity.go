@@ -8,7 +8,6 @@ type AuctionEntity struct {
 	StartTime               *time.Time
 	EndTime                 time.Time
 	State                   string
-	HighestBidID            *uint64
 	HighestBidAmountInCents *uint64
 	Version                 uint64
 	CreatedAt               time.Time

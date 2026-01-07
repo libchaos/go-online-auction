@@ -61,11 +61,6 @@ func (c *PlaceBidCommand) Execute(
 
 	money := model.NewMoneyModel(input.AmountInCents)
 
-	var currentHighestBid *model.BidModel
-	if highest, ok := c.restoreCurrentHighestBid(auction, input.AuctionID); ok {
-		currentHighestBid = &highest
-	}
-
 	bid, err := model.NewBidModel(input.AuctionID, input.UserID, money)
 	if err != nil {
 		c.logger.Error().Err(err).
@@ -75,21 +70,21 @@ func (c *PlaceBidCommand) Execute(
 		return PlaceBidCommandOutput{}, err
 	}
 
-	err = auction.PlaceBid(bid.ID(), money, currentHighestBid)
-	if err != nil {
-		c.logger.Error().Err(err).
-			Uint64("auction_id", input.AuctionID).
-			Uint64("user_id", input.UserID).
-			Msg("failed to place bid on auction")
-		return PlaceBidCommandOutput{}, err
-	}
-
-	err = uow.BidRepository().Create(ctx, bid)
+	persistedBid, err := uow.BidRepository().Create(ctx, bid)
 	if err != nil {
 		c.logger.Error().Err(err).
 			Uint64("auction_id", input.AuctionID).
 			Uint64("user_id", input.UserID).
 			Msg("failed to persist bid")
+		return PlaceBidCommandOutput{}, err
+	}
+
+	err = auction.PlaceBid(money)
+	if err != nil {
+		c.logger.Error().Err(err).
+			Uint64("auction_id", input.AuctionID).
+			Uint64("user_id", input.UserID).
+			Msg("failed to place bid on auction")
 		return PlaceBidCommandOutput{}, err
 	}
 
@@ -106,7 +101,7 @@ func (c *PlaceBidCommand) Execute(
 	}
 
 	bidPlacedEvent := event.NewBidPlacedEvent(
-		bid.ID(),
+		persistedBid.ID(),
 		auction.ID(),
 		input.UserID,
 		money,
@@ -122,38 +117,10 @@ func (c *PlaceBidCommand) Execute(
 	}
 
 	return PlaceBidCommandOutput{
-		ID:            bid.ID(),
-		AuctionID:     bid.AuctionID(),
-		UserID:        bid.UserID(),
-		AmountInCents: bid.Amount().AmountInCents(),
-		CreatedAt:     bid.CreatedAt(),
+		ID:            persistedBid.ID(),
+		AuctionID:     persistedBid.AuctionID(),
+		UserID:        persistedBid.UserID(),
+		AmountInCents: persistedBid.Amount().AmountInCents(),
+		CreatedAt:     persistedBid.CreatedAt(),
 	}, nil
-}
-
-func (c *PlaceBidCommand) restoreCurrentHighestBid(
-	auction model.AuctionModel,
-	auctionID uint64,
-) (model.BidModel, bool) {
-	if auction.HighestBidID() == nil || auction.HighestBidAmount() == nil {
-		return model.BidModel{}, false
-	}
-
-	highestMoney := model.NewMoneyModel(*auction.HighestBidAmount())
-	highest, err := model.RestoreBidModel(
-		*auction.HighestBidID(),
-		auction.ID(),
-		0,
-		highestMoney,
-		time.Time{},
-		time.Time{},
-	)
-	if err != nil {
-		c.logger.Error().Err(err).
-			Uint64("auction_id", auctionID).
-			Uint64("highest_bid_id", *auction.HighestBidID()).
-			Msg("failed to restore current highest bid")
-		return model.BidModel{}, false
-	}
-
-	return highest, true
 }
