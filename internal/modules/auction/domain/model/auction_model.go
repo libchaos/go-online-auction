@@ -37,7 +37,7 @@ func NewAuctionModel(listingID uint64, endTime time.Time) (AuctionModel, error) 
 		state:            draftState,
 		highestBidID:     nil,
 		highestBidAmount: nil,
-		version:          0,
+		version:          1,
 		createdAt:        now,
 		updatedAt:        now,
 	}, nil

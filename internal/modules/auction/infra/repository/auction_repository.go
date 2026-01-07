@@ -34,13 +34,12 @@ func (r *PostgresAuctionRepository) Create(ctx context.Context, auction model.Au
 	e := r.mapper.ToEntity(auction)
 
 	query := `
-		INSERT INTO auctions (listing_id, start_time, end_time, state, highest_bid_id, highest_bid_amount_in_cents, version, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO auctions (listing_id, end_time, state, highest_bid_id, highest_bid_amount_in_cents, version, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id`
 
 	err := r.db.QueryRow(ctx, query,
 		e.ListingID,
-		e.StartTime,
 		e.EndTime,
 		e.State,
 		e.HighestBidID,

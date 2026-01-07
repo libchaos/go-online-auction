@@ -6,12 +6,12 @@ CREATE TYPE auction_state AS ENUM ('draft', 'active', 'closed', 'cancelled');
 CREATE TABLE auctions (
     id             BIGSERIAL PRIMARY KEY,
     listing_id     BIGINT NOT NULL,
-    start_time     TIMESTAMPTZ NOT NULL,
+    start_time     TIMESTAMPTZ,
     end_time       TIMESTAMPTZ NOT NULL,
     state          auction_state NOT NULL DEFAULT 'draft',
     highest_bid_id BIGINT,
     highest_bid_amount_in_cents BIGINT,
-    version        BIGINT NOT NULL DEFAULT 0,
+    version        BIGINT NOT NULL DEFAULT 1,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     

@@ -26,7 +26,7 @@ func TestNewAuctionModel(t *testing.T) {
 		require.Equal(t, enum.EnumAuctionStateDraft, state.String())
 		require.Nil(t, auction.HighestBidAmount())
 		require.Nil(t, auction.HighestBidID())
-		require.Equal(t, uint64(0), auction.Version())
+		require.Equal(t, uint64(1), auction.Version())
 	})
 
 	t.Run("returns error when listing id is zero", func(t *testing.T) {
