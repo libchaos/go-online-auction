@@ -3,13 +3,14 @@ package entity
 import "time"
 
 type AuctionEntity struct {
-	ID           uint64
-	ListingID    uint64
-	StartTime    time.Time
-	EndTime      time.Time
-	State        string
-	HighestBidID *uint64
-	Version      uint64
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID                      uint64
+	ListingID               uint64
+	StartTime               time.Time
+	EndTime                 time.Time
+	State                   string
+	HighestBidID            *uint64
+	HighestBidAmountInCents *uint64
+	Version                 uint64
+	CreatedAt               time.Time
+	UpdatedAt               time.Time
 }

@@ -27,11 +27,12 @@ type ListAuctionsQueryOutput struct {
 }
 
 type AuctionSummaryOutput struct {
-	ID        uint64
-	ListingID uint64
-	State     string
-	StartTime time.Time
-	EndTime   time.Time
+	ID                      uint64
+	ListingID               uint64
+	State                   string
+	StartTime               time.Time
+	EndTime                 time.Time
+	HighestBidAmountInCents *uint64
 }
 
 type ListAuctionsQuery struct {
@@ -82,11 +83,12 @@ func (q *ListAuctionsQuery) Execute(
 	for _, auction := range auctions {
 		state := auction.State()
 		auctionOutputs = append(auctionOutputs, AuctionSummaryOutput{
-			ID:        auction.ID(),
-			ListingID: auction.ListingID(),
-			State:     state.String(),
-			StartTime: auction.StartTime(),
-			EndTime:   auction.EndTime(),
+			ID:                      auction.ID(),
+			ListingID:               auction.ListingID(),
+			State:                   state.String(),
+			StartTime:               auction.StartTime(),
+			EndTime:                 auction.EndTime(),
+			HighestBidAmountInCents: auction.HighestBidAmount(),
 		})
 	}
 

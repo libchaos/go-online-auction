@@ -100,11 +100,14 @@ func (h *AuctionHandler) List(w http.ResponseWriter, r *http.Request) {
 	auctions := make([]dto.AuctionResponse, 0, len(output.Auctions))
 	for _, auction := range output.Auctions {
 		auctions = append(auctions, dto.AuctionResponse{
-			ID:        auction.ID,
-			ListingID: auction.ListingID,
-			State:     auction.State,
-			StartTime: auction.StartTime,
-			EndTime:   auction.EndTime,
+			ID:                      auction.ID,
+			ListingID:               auction.ListingID,
+			State:                   auction.State,
+			StartTime:               auction.StartTime,
+			EndTime:                 auction.EndTime,
+			HighestBidID:            nil,
+			HighestBidAmountInCents: auction.HighestBidAmountInCents,
+			CreatedAt:               auction.StartTime,
 		})
 	}
 
@@ -145,12 +148,14 @@ func (h *AuctionHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 
 	_ = response.JSON(w, http.StatusOK, response.NewEnvelope(dto.AuctionDetailResponse{
 		Auction: dto.AuctionResponse{
-			ID:        output.Auction.ID,
-			ListingID: output.Auction.ListingID,
-			State:     output.Auction.State,
-			StartTime: output.Auction.StartTime,
-			EndTime:   output.Auction.EndTime,
-			CreatedAt: output.Auction.CreatedAt,
+			ID:                      output.Auction.ID,
+			ListingID:               output.Auction.ListingID,
+			State:                   output.Auction.State,
+			StartTime:               output.Auction.StartTime,
+			EndTime:                 output.Auction.EndTime,
+			HighestBidID:            output.Auction.HighestBidID,
+			HighestBidAmountInCents: output.Auction.HighestBidAmountInCents,
+			CreatedAt:               output.Auction.CreatedAt,
 		},
 		Bids: bids,
 	}), nil)

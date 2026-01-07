@@ -25,7 +25,7 @@ func (m *AuctionMapper) ToDomain(e entity.AuctionEntity) (model.AuctionModel, er
 		e.EndTime,
 		state,
 		e.HighestBidID,
-		nil, // TODO: Map highestBidAmount in Task 2.0
+		e.HighestBidAmountInCents,
 		e.Version,
 		e.CreatedAt,
 		e.UpdatedAt,
@@ -35,14 +35,15 @@ func (m *AuctionMapper) ToDomain(e entity.AuctionEntity) (model.AuctionModel, er
 func (m *AuctionMapper) ToEntity(auction model.AuctionModel) entity.AuctionEntity {
 	state := auction.State()
 	return entity.AuctionEntity{
-		ID:           auction.ID(),
-		ListingID:    auction.ListingID(),
-		StartTime:    auction.StartTime(),
-		EndTime:      auction.EndTime(),
-		State:        state.String(),
-		HighestBidID: auction.HighestBidID(),
-		Version:      auction.Version(),
-		CreatedAt:    auction.CreatedAt(),
-		UpdatedAt:    auction.UpdatedAt(),
+		ID:                      auction.ID(),
+		ListingID:               auction.ListingID(),
+		StartTime:               auction.StartTime(),
+		EndTime:                 auction.EndTime(),
+		State:                   state.String(),
+		HighestBidID:            auction.HighestBidID(),
+		HighestBidAmountInCents: auction.HighestBidAmount(),
+		Version:                 auction.Version(),
+		CreatedAt:               auction.CreatedAt(),
+		UpdatedAt:               auction.UpdatedAt(),
 	}
 }

@@ -73,19 +73,10 @@ func (c *CloseAuctionCommand) Execute(
 
 	var winningBidID *uint64
 	var finalAmount *model.MoneyModel
-	if auction.HighestBidID() != nil {
+	if auction.HighestBidID() != nil && auction.HighestBidAmount() != nil {
 		winningBidID = auction.HighestBidID()
-		var winningBid model.BidModel
-		winningBid, err = uow.BidRepository().FindByID(ctx, *winningBidID)
-		if err != nil {
-			c.logger.Error().Err(err).
-				Uint64("auction_id", input.AuctionID).
-				Uint64("winning_bid_id", *winningBidID).
-				Msg("failed to find winning bid")
-			return CloseAuctionCommandOutput{}, err
-		}
-		amount := winningBid.Amount()
-		finalAmount = &amount
+		money := model.NewMoneyModel(*auction.HighestBidAmount())
+		finalAmount = &money
 	}
 
 	err = uow.Complete(ctx)

@@ -20,14 +20,15 @@ type GetAuctionByIDQueryOutput struct {
 }
 
 type AuctionOutput struct {
-	ID           uint64
-	ListingID    uint64
-	State        string
-	StartTime    time.Time
-	EndTime      time.Time
-	HighestBidID *uint64
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID                      uint64
+	ListingID               uint64
+	State                   string
+	StartTime               time.Time
+	EndTime                 time.Time
+	HighestBidID            *uint64
+	HighestBidAmountInCents *uint64
+	CreatedAt               time.Time
+	UpdatedAt               time.Time
 }
 
 type BidOutput struct {
@@ -83,14 +84,15 @@ func (q *GetAuctionByIDQuery) Execute(
 	state := auction.State()
 	return GetAuctionByIDQueryOutput{
 		Auction: AuctionOutput{
-			ID:           auction.ID(),
-			ListingID:    auction.ListingID(),
-			State:        state.String(),
-			StartTime:    auction.StartTime(),
-			EndTime:      auction.EndTime(),
-			HighestBidID: auction.HighestBidID(),
-			CreatedAt:    auction.CreatedAt(),
-			UpdatedAt:    auction.UpdatedAt(),
+			ID:                      auction.ID(),
+			ListingID:               auction.ListingID(),
+			State:                   state.String(),
+			StartTime:               auction.StartTime(),
+			EndTime:                 auction.EndTime(),
+			HighestBidID:            auction.HighestBidID(),
+			HighestBidAmountInCents: auction.HighestBidAmount(),
+			CreatedAt:               auction.CreatedAt(),
+			UpdatedAt:               auction.UpdatedAt(),
 		},
 		Bids: bidOutputs,
 	}, nil

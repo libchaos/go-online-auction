@@ -62,16 +62,7 @@ func (c *PlaceBidCommand) Execute(
 	money := model.NewMoneyModel(input.AmountInCents)
 
 	var currentHighestBid *model.BidModel
-	if auction.HighestBidID() != nil {
-		var highest model.BidModel
-		highest, err = uow.BidRepository().FindByID(ctx, *auction.HighestBidID())
-		if err != nil {
-			c.logger.Error().Err(err).
-				Uint64("auction_id", input.AuctionID).
-				Uint64("highest_bid_id", *auction.HighestBidID()).
-				Msg("failed to find current highest bid")
-			return PlaceBidCommandOutput{}, err
-		}
+	if highest, ok := c.restoreCurrentHighestBid(auction, input.AuctionID); ok {
 		currentHighestBid = &highest
 	}
 
@@ -137,4 +128,32 @@ func (c *PlaceBidCommand) Execute(
 		AmountInCents: bid.Amount().AmountInCents(),
 		CreatedAt:     bid.CreatedAt(),
 	}, nil
+}
+
+func (c *PlaceBidCommand) restoreCurrentHighestBid(
+	auction model.AuctionModel,
+	auctionID uint64,
+) (model.BidModel, bool) {
+	if auction.HighestBidID() == nil || auction.HighestBidAmount() == nil {
+		return model.BidModel{}, false
+	}
+
+	highestMoney := model.NewMoneyModel(*auction.HighestBidAmount())
+	highest, err := model.RestoreBidModel(
+		*auction.HighestBidID(),
+		auction.ID(),
+		0,
+		highestMoney,
+		time.Time{},
+		time.Time{},
+	)
+	if err != nil {
+		c.logger.Error().Err(err).
+			Uint64("auction_id", auctionID).
+			Uint64("highest_bid_id", *auction.HighestBidID()).
+			Msg("failed to restore current highest bid")
+		return model.BidModel{}, false
+	}
+
+	return highest, true
 }
