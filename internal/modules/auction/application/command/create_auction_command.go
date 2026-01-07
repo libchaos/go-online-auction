@@ -52,19 +52,19 @@ func (c *CreateAuctionCommand) Execute(
 		return CreateAuctionCommandOutput{}, err
 	}
 
-	err = c.auctionRepository.Create(ctx, auction)
+	persistedAuction, err := c.auctionRepository.Create(ctx, auction)
 	if err != nil {
 		c.logger.Error().Err(err).Msg("failed to persist auction")
 		return CreateAuctionCommandOutput{}, err
 	}
 
-	state := auction.State()
+	state := persistedAuction.State()
 	return CreateAuctionCommandOutput{
-		ID:        auction.ID(),
-		ListingID: auction.ListingID(),
+		ID:        persistedAuction.ID(),
+		ListingID: persistedAuction.ListingID(),
 		State:     state.String(),
-		EndTime:   auction.EndTime(),
-		CreatedAt: auction.CreatedAt(),
+		EndTime:   persistedAuction.EndTime(),
+		CreatedAt: persistedAuction.CreatedAt(),
 	}, nil
 }
 
