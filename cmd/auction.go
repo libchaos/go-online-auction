@@ -34,5 +34,5 @@ var auctionCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(allCmd)
+	rootCmd.AddCommand(auctionCmd)
 }

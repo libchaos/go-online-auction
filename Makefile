@@ -29,6 +29,14 @@ install-libs:
 run:
 	go run ./main.go all
 
+.PHONY: run-websocket
+run-websocket:
+	go run ./main.go websocket
+
+.PHONY: run-auction
+run-auction:
+	go run ./main.go auction
+
 .PHONY: migrate
 migrate:
 	go run ./main.go db:migrate
