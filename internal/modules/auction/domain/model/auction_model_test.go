@@ -85,7 +85,11 @@ func TestRestoreAuctionModel(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, id, auction.ID())
 		require.Equal(t, listingID, auction.ListingID())
+		require.Equal(t, startTime, auction.StartTime())
+		require.Equal(t, endTime, auction.EndTime())
 		require.Equal(t, version, auction.Version())
+		require.Equal(t, now, auction.CreatedAt())
+		require.Equal(t, now, auction.UpdatedAt())
 		require.NotNil(t, auction.HighestBidID())
 		require.Equal(t, highestBidID, *auction.HighestBidID())
 		require.NotNil(t, auction.HighestBidAmount())
@@ -136,6 +140,29 @@ func TestRestoreAuctionModel(t *testing.T) {
 
 		// Assert
 		require.ErrorIs(t, err, errs.ErrListingIDRequired)
+	})
+
+	t.Run("returns error when end time is zero", func(t *testing.T) {
+		// Arrange
+		now := time.Now().UTC()
+		state, _ := enum.NewAuctionStateEnum(enum.EnumAuctionStateActive)
+
+		// Act
+		_, err := model.RestoreAuctionModel(
+			1,
+			100,
+			now,
+			time.Time{},
+			state,
+			nil,
+			nil,
+			0,
+			now,
+			now,
+		)
+
+		// Assert
+		require.ErrorIs(t, err, errs.ErrEndTimeRequired)
 	})
 }
 
