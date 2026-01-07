@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"context"
-
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
 
@@ -19,7 +17,6 @@ var allCmd = &cobra.Command{
 	Short: "Start the HTTP server",
 	Long:  `Start the auction HTTP server with WebSocket support for real-time updates.`,
 	RunE: func(_ *cobra.Command, _ []string) error {
-		ctx := context.Background()
 		app := fx.New(
 			config.Module,
 			logger.Module,
@@ -28,7 +25,8 @@ var allCmd = &cobra.Command{
 			httpserver.Module,
 			auction.Module,
 		)
-		return app.Start(ctx)
+		app.Run()
+		return nil
 	},
 }
 
