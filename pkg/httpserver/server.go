@@ -55,6 +55,12 @@ func New(cfg Config) (*Server, error) {
 		Debug:              cfg.CORS.Debug,
 	}))
 
+	// add a healthy check endpoint
+	router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+
 	upgrader := &websocket.Upgrader{
 		ReadBufferSize:  DefaultWSReadBufferSize,
 		WriteBufferSize: DefaultWSWriteBufferSize,
