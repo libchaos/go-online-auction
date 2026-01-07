@@ -4,11 +4,15 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"strings"
 
 	"github.com/redis/go-redis/v9"
 )
 
 func New(cfg Config) (redis.UniversalClient, error) {
+	if err := validateConfig(cfg); err != nil {
+		return nil, err
+	}
 	var client redis.UniversalClient
 
 	switch cfg.ClientType {
@@ -44,4 +48,21 @@ func New(cfg Config) (redis.UniversalClient, error) {
 	}
 
 	return client, nil
+}
+
+func validateConfig(cfg Config) error {
+	clientType := strings.TrimSpace(string(cfg.ClientType))
+	if clientType == "" {
+		return fmt.Errorf("redis client type cannot be empty")
+	}
+
+	if clientType != string(ClientTypeSingleNode) && clientType != string(ClientTypeCluster) {
+		return fmt.Errorf("invalid redis client type: %s", clientType)
+	}
+
+	if strings.TrimSpace(cfg.URL) == "" {
+		return fmt.Errorf("redis URL cannot be empty")
+	}
+
+	return nil
 }
