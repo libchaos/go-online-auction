@@ -314,7 +314,7 @@ func (s *GetAuctionByIDQueryTestSuite) TestExecute_WithMultipleBids_ReturnsAllBi
 	// Assert
 	s.Require().NoError(err)
 	s.Equal(5, len(result.Bids))
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		s.Equal(uint64(i+1), result.Bids[i].ID)
 		s.Equal(uint64(100+i+1), result.Bids[i].UserID)
 		s.Equal(uint64(5000+(i+1)*1000), result.Bids[i].AmountInCents)

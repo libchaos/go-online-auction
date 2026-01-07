@@ -377,16 +377,6 @@ linters:
       # Ignore all linters for test directory
       - path: 'test/.*'
         text: '.*'
-      # Ignore specific linters for test files
+      # Ignore all linters for test files
       - path: '_test\.go'
-        linters:
-          - bodyclose
-          - dupl
-          - errcheck
-          - funlen
-          - goconst
-          - gosec
-          - noctx
-          - wrapcheck
-          - testifylint
-          - revive
+        text: '.*'

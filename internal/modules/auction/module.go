@@ -81,11 +81,8 @@ var Module = fx.Module(
 )
 
 func RegisterAuctionRoutes(
-	lc fx.Lifecycle,
-	hub *websocket.Hub,
 	server *httpserver.Server,
 	auctionHandler *handler.AuctionHandler,
-	logger logger.Logger,
 ) {
 	router.RegisterAuctionRoutes(server, auctionHandler)
 }
@@ -103,7 +100,7 @@ func RegisterWebsocketRoutes(
 	hubCtx, hubCancel := context.WithCancel(context.Background())
 
 	lc.Append(fx.Hook{
-		OnStart: func(ctx context.Context) error {
+		OnStart: func(_ context.Context) error {
 			logger.Info().Msg("starting websocket hub")
 			go hub.Run(hubCtx)
 			return nil

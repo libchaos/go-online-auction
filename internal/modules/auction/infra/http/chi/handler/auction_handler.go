@@ -17,6 +17,8 @@ import (
 	"github.com/cristiano-pacheco/go-online-auction/pkg/httpserver"
 )
 
+const maxRandomUserID = 100
+
 type AuctionHandler struct {
 	createAuctionCommand *command.CreateAuctionCommand
 	startAuctionCommand  *command.StartAuctionCommand
@@ -226,9 +228,9 @@ func (h *AuctionHandler) PlaceBid(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// random user id (constrained to int64 max for PostgreSQL BIGINT compatibility)
-	// Using crypto/rand to generate a secure random value in range [1, 100]
-	randomNum, _ := rand.Int(rand.Reader, big.NewInt(100))
-	userID := uint64(randomNum.Int64() + 1)
+	// Using crypto/rand to generate a secure random value in range [1, maxRandomUserID]
+	randomNum, _ := rand.Int(rand.Reader, big.NewInt(maxRandomUserID))
+	userID := randomNum.Uint64() + 1
 
 	_, err = h.placeBidCommand.Execute(r.Context(), command.PlaceBidCommandInput{
 		AuctionID:     auctionID,
