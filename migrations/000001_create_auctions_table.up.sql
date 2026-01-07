@@ -27,3 +27,11 @@ CREATE INDEX idx_auctions_state_end_time ON auctions(state, end_time);
 -- Composite index for scheduler queries: find draft auctions ready to start
 -- Covers: WHERE state = 'draft' AND start_time <= now()
 CREATE INDEX idx_auctions_state_start_time ON auctions(state, start_time);
+
+-- Composite index for listing auctions with pagination
+-- Covers: WHERE state = $1 ORDER BY created_at DESC LIMIT/OFFSET
+CREATE INDEX idx_auctions_state_created_at ON auctions(state, created_at DESC);
+
+-- Standalone index for queries without state filter but with created_at ordering
+-- Covers: ORDER BY created_at DESC when no state filter is applied
+CREATE INDEX idx_auctions_created_at ON auctions(created_at DESC);
