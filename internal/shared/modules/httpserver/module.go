@@ -22,7 +22,12 @@ func startHTTPServer(
 	lc.Append(fx.Hook{
 		OnStart: func(_ context.Context) error {
 			log.Info().Str("addr", server.Addr()).Msg("starting HTTP server")
-			return server.Start()
+			go func() {
+				if err := server.Start(); err != nil {
+					log.Error().Err(err).Msg("HTTP server stopped")
+				}
+			}()
+			return nil
 		},
 		OnStop: func(ctx context.Context) error {
 			log.Info().Msg("stopping HTTP server")
