@@ -6,147 +6,120 @@ import (
 
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/errs"
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/model"
-	"github.com/stretchr/testify/suite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-type BidModelTestSuite struct {
-	suite.Suite
+func TestNewBidModel(t *testing.T) {
+	t.Run("should create a new bid model with valid input", func(t *testing.T) {
+		// Arrange
+		auctionID := uint64(100)
+		userID := uint64(200)
+		amount := model.NewMoneyModel(5000)
+
+		// Act
+		bid, err := model.NewBidModel(auctionID, userID, amount)
+
+		// Assert
+		require.NoError(t, err)
+		assert.Equal(t, auctionID, bid.AuctionID())
+		assert.Equal(t, userID, bid.UserID())
+		assert.Equal(t, amount, bid.Amount())
+		assert.False(t, bid.CreatedAt().IsZero())
+		assert.False(t, bid.UpdatedAt().IsZero())
+	})
+
+	t.Run("should return error when auction id is zero", func(t *testing.T) {
+		// Arrange
+		auctionID := uint64(0)
+		userID := uint64(200)
+		amount := model.NewMoneyModel(5000)
+
+		// Act
+		_, err := model.NewBidModel(auctionID, userID, amount)
+
+		// Assert
+		require.ErrorIs(t, err, errs.ErrAuctionIDRequired)
+	})
+
+	t.Run("should return error when user id is zero", func(t *testing.T) {
+		// Arrange
+		auctionID := uint64(100)
+		userID := uint64(0)
+		amount := model.NewMoneyModel(5000)
+
+		// Act
+		_, err := model.NewBidModel(auctionID, userID, amount)
+
+		// Assert
+		require.ErrorIs(t, err, errs.ErrUserIDRequired)
+	})
 }
 
-func TestBidModelSuite(t *testing.T) {
-	suite.Run(t, new(BidModelTestSuite))
-}
+func TestRestoreBidModel(t *testing.T) {
+	t.Run("should restore bid model with valid input", func(t *testing.T) {
+		// Arrange
+		id := uint64(1)
+		auctionID := uint64(100)
+		userID := uint64(200)
+		amount := model.NewMoneyModel(5000)
+		now := time.Now().UTC()
 
-func (s *BidModelTestSuite) TestNewBidModel_ValidInput_ReturnsBidModel() {
-	// Arrange
-	auctionID := uint64(1)
-	userID := uint64(2)
-	amount := model.NewMoneyModel(10000)
+		// Act
+		bid, err := model.RestoreBidModel(id, auctionID, userID, amount, now, now)
 
-	// Act
-	result, err := model.NewBidModel(auctionID, userID, amount)
+		// Assert
+		require.NoError(t, err)
+		assert.Equal(t, id, bid.ID())
+		assert.Equal(t, auctionID, bid.AuctionID())
+		assert.Equal(t, userID, bid.UserID())
+		assert.Equal(t, amount, bid.Amount())
+		assert.Equal(t, now, bid.CreatedAt())
+		assert.Equal(t, now, bid.UpdatedAt())
+	})
 
-	// Assert
-	s.Require().NoError(err)
-	s.Equal(auctionID, result.AuctionID())
-	s.Equal(userID, result.UserID())
-	s.Equal(amount, result.Amount())
-	s.NotZero(result.CreatedAt())
-	s.NotZero(result.UpdatedAt())
-	s.Equal(result.CreatedAt(), result.UpdatedAt())
-}
+	t.Run("should return error when id is zero", func(t *testing.T) {
+		// Arrange
+		id := uint64(0)
+		auctionID := uint64(100)
+		userID := uint64(200)
+		amount := model.NewMoneyModel(5000)
+		now := time.Now().UTC()
 
-func (s *BidModelTestSuite) TestNewBidModel_ZeroAuctionID_ReturnsError() {
-	// Arrange
-	auctionID := uint64(0)
-	userID := uint64(2)
-	amount := model.NewMoneyModel(10000)
+		// Act
+		_, err := model.RestoreBidModel(id, auctionID, userID, amount, now, now)
 
-	// Act
-	_, err := model.NewBidModel(auctionID, userID, amount)
+		// Assert
+		require.ErrorIs(t, err, errs.ErrBidIDRequired)
+	})
 
-	// Assert
-	s.Require().ErrorIs(err, errs.ErrAuctionIDRequired)
-}
+	t.Run("should return error when auction id is zero", func(t *testing.T) {
+		// Arrange
+		id := uint64(1)
+		auctionID := uint64(0)
+		userID := uint64(200)
+		amount := model.NewMoneyModel(5000)
+		now := time.Now().UTC()
 
-func (s *BidModelTestSuite) TestNewBidModel_ZeroUserID_ReturnsError() {
-	// Arrange
-	auctionID := uint64(1)
-	userID := uint64(0)
-	amount := model.NewMoneyModel(10000)
+		// Act
+		_, err := model.RestoreBidModel(id, auctionID, userID, amount, now, now)
 
-	// Act
-	_, err := model.NewBidModel(auctionID, userID, amount)
+		// Assert
+		require.ErrorIs(t, err, errs.ErrAuctionIDRequired)
+	})
 
-	// Assert
-	s.Require().ErrorIs(err, errs.ErrUserIDRequired)
-}
+	t.Run("should return error when user id is zero", func(t *testing.T) {
+		// Arrange
+		id := uint64(1)
+		auctionID := uint64(100)
+		userID := uint64(0)
+		amount := model.NewMoneyModel(5000)
+		now := time.Now().UTC()
 
-func (s *BidModelTestSuite) TestRestoreBidModel_ValidInput_ReturnsBidModel() {
-	// Arrange
-	id := uint64(100)
-	auctionID := uint64(1)
-	userID := uint64(2)
-	amount := model.NewMoneyModel(10000)
-	createdAt := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-	updatedAt := time.Date(2026, 1, 2, 12, 0, 0, 0, time.UTC)
+		// Act
+		_, err := model.RestoreBidModel(id, auctionID, userID, amount, now, now)
 
-	// Act
-	result, err := model.RestoreBidModel(id, auctionID, userID, amount, createdAt, updatedAt)
-
-	// Assert
-	s.Require().NoError(err)
-	s.Equal(id, result.ID())
-	s.Equal(auctionID, result.AuctionID())
-	s.Equal(userID, result.UserID())
-	s.Equal(amount, result.Amount())
-	s.Equal(createdAt, result.CreatedAt())
-	s.Equal(updatedAt, result.UpdatedAt())
-}
-
-func (s *BidModelTestSuite) TestRestoreBidModel_ZeroID_ReturnsError() {
-	// Arrange
-	id := uint64(0)
-	auctionID := uint64(1)
-	userID := uint64(2)
-	amount := model.NewMoneyModel(10000)
-	createdAt := time.Now().UTC()
-	updatedAt := time.Now().UTC()
-
-	// Act
-	_, err := model.RestoreBidModel(id, auctionID, userID, amount, createdAt, updatedAt)
-
-	// Assert
-	s.Require().ErrorIs(err, errs.ErrBidIDRequired)
-}
-
-func (s *BidModelTestSuite) TestRestoreBidModel_ZeroAuctionID_ReturnsError() {
-	// Arrange
-	id := uint64(100)
-	auctionID := uint64(0)
-	userID := uint64(2)
-	amount := model.NewMoneyModel(10000)
-	createdAt := time.Now().UTC()
-	updatedAt := time.Now().UTC()
-
-	// Act
-	_, err := model.RestoreBidModel(id, auctionID, userID, amount, createdAt, updatedAt)
-
-	// Assert
-	s.Require().ErrorIs(err, errs.ErrAuctionIDRequired)
-}
-
-func (s *BidModelTestSuite) TestRestoreBidModel_ZeroUserID_ReturnsError() {
-	// Arrange
-	id := uint64(100)
-	auctionID := uint64(1)
-	userID := uint64(0)
-	amount := model.NewMoneyModel(10000)
-	createdAt := time.Now().UTC()
-	updatedAt := time.Now().UTC()
-
-	// Act
-	_, err := model.RestoreBidModel(id, auctionID, userID, amount, createdAt, updatedAt)
-
-	// Assert
-	s.Require().ErrorIs(err, errs.ErrUserIDRequired)
-}
-
-func (s *BidModelTestSuite) TestGetters_ReturnCorrectValues() {
-	// Arrange
-	id := uint64(100)
-	auctionID := uint64(1)
-	userID := uint64(2)
-	amount := model.NewMoneyModel(10000)
-	createdAt := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-	updatedAt := time.Date(2026, 1, 2, 12, 0, 0, 0, time.UTC)
-	bidModel, _ := model.RestoreBidModel(id, auctionID, userID, amount, createdAt, updatedAt)
-
-	// Act & Assert
-	s.Equal(id, bidModel.ID())
-	s.Equal(auctionID, bidModel.AuctionID())
-	s.Equal(userID, bidModel.UserID())
-	s.Equal(amount, bidModel.Amount())
-	s.Equal(createdAt, bidModel.CreatedAt())
-	s.Equal(updatedAt, bidModel.UpdatedAt())
+		// Assert
+		require.ErrorIs(t, err, errs.ErrUserIDRequired)
+	})
 }

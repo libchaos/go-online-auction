@@ -19,5 +19,5 @@ func (m MoneyModel) IsGreaterThan(other MoneyModel) bool {
 }
 
 func (m MoneyModel) IsGreaterThanOrEqual(other MoneyModel) bool {
-	return m.amountInCents > other.amountInCents
+	return m.amountInCents >= other.amountInCents
 }
