@@ -227,10 +227,11 @@ func (h *AuctionHandler) PlaceBid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// random user id
-	userID := rand.Uint64()
+	// random user id (constrained to int64 max for PostgreSQL BIGINT compatibility)
+	// Using math/rand/v2.IntN to generate a value in range [0, max_int64]
+	userID := uint64(rand.IntN(10))
 
-	output, err := h.placeBidCommand.Execute(r.Context(), command.PlaceBidCommandInput{
+	_, err = h.placeBidCommand.Execute(r.Context(), command.PlaceBidCommandInput{
 		AuctionID:     auctionID,
 		UserID:        userID,
 		AmountInCents: req.AmountInCents,
@@ -240,13 +241,7 @@ func (h *AuctionHandler) PlaceBid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = response.JSON(w, http.StatusCreated, response.NewEnvelope(dto.BidResponse{
-		ID:            output.ID,
-		AuctionID:     output.AuctionID,
-		UserID:        output.UserID,
-		AmountInCents: output.AmountInCents,
-		CreatedAt:     output.CreatedAt,
-	}), nil)
+	_ = response.JSON(w, http.StatusNoContent, nil, nil)
 }
 
 func (h *AuctionHandler) WebSocket(w http.ResponseWriter, r *http.Request) {
