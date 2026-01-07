@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
+import ErrorBoundary from './components/ErrorBoundary';
 import AuctionListPage from './pages/AuctionListPage';
 import CreateAuctionPage from './pages/CreateAuctionPage';
 import AuctionDetailPage from './pages/AuctionDetailPage';
@@ -51,17 +52,19 @@ function Layout({ children }) {
  */
 function App() {
   return (
-    <BrowserRouter>
-      <Layout>
-        <Routes>
-          <Route path="/" element={<AuctionListPage />} />
-          <Route path="/create" element={<CreateAuctionPage />} />
-          <Route path="/auctions/:id" element={<AuctionDetailPage />} />
-          <Route path="/auctions/:id/subscribe" element={<WebSocketPage />} />
-        </Routes>
-      </Layout>
-      <Toaster position="top-right" />
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <Layout>
+          <Routes>
+            <Route path="/" element={<AuctionListPage />} />
+            <Route path="/create" element={<CreateAuctionPage />} />
+            <Route path="/auctions/:id" element={<AuctionDetailPage />} />
+            <Route path="/auctions/:id/subscribe" element={<WebSocketPage />} />
+          </Routes>
+        </Layout>
+        <Toaster position="top-right" />
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
 
