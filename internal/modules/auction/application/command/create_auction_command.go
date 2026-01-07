@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/errs"
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/model"
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/ports"
 	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/logger"
@@ -42,10 +41,6 @@ func (c *CreateAuctionCommand) Execute(
 	ctx context.Context,
 	input CreateAuctionCommandInput,
 ) (CreateAuctionCommandOutput, error) {
-	if err := validateCreateAuctionInput(input); err != nil {
-		return CreateAuctionCommandOutput{}, err
-	}
-
 	auction, err := model.NewAuctionModel(input.ListingID, input.EndTime)
 	if err != nil {
 		c.logger.Error().Err(err).Msg("failed to create auction domain model")
@@ -66,11 +61,4 @@ func (c *CreateAuctionCommand) Execute(
 		EndTime:   persistedAuction.EndTime(),
 		CreatedAt: persistedAuction.CreatedAt(),
 	}, nil
-}
-
-func validateCreateAuctionInput(input CreateAuctionCommandInput) error {
-	if input.EndTime.Before(time.Now().UTC()) || input.EndTime.Equal(time.Now().UTC()) {
-		return errs.ErrEndTimeMustBeInFuture
-	}
-	return nil
 }

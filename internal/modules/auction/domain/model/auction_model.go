@@ -222,6 +222,10 @@ func validateNewAuction(listingID uint64, endTime time.Time) error {
 		return errs.ErrEndTimeRequired
 	}
 
+	if endTime.Before(time.Now().UTC()) || endTime.Equal(time.Now().UTC()) {
+		return errs.ErrEndTimeMustBeInFuture
+	}
+
 	return nil
 }
 
