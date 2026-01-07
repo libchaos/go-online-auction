@@ -12,9 +12,9 @@ import (
 	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/redis"
 )
 
-var allCmd = &cobra.Command{
-	Use:   "all",
-	Short: "Start the HTTP server",
+var auctionCmd = &cobra.Command{
+	Use:   "auction",
+	Short: "Start the auction module",
 	Long:  `Start the auction HTTP server with WebSocket support for real-time updates.`,
 	RunE: func(_ *cobra.Command, _ []string) error {
 		app := fx.New(
@@ -26,7 +26,6 @@ var allCmd = &cobra.Command{
 			auction.Module,
 			fx.Invoke(
 				auction.RegisterAuctionRoutes,
-				auction.RegisterWebsocketRoutes,
 			),
 		)
 		app.Run()
