@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/enum"
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/ports"
 	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/logger"
 )
@@ -67,13 +68,23 @@ func (q *ListAuctionsQuery) Execute(
 		offset = 0
 	}
 
-	auctions, err := q.auctionRepository.FindAllPaginated(ctx, input.State, limit, offset)
+	var state *enum.AuctionStateEnum
+	if input.State != nil {
+		s, err := enum.NewAuctionStateEnum(*input.State)
+		if err != nil {
+			q.logger.Error().Err(err).Msg("invalid auction state")
+			return ListAuctionsQueryOutput{}, err
+		}
+		state = &s
+	}
+
+	auctions, err := q.auctionRepository.FindAllPaginated(ctx, state, limit, offset)
 	if err != nil {
 		q.logger.Error().Err(err).Msg("failed to fetch auctions")
 		return ListAuctionsQueryOutput{}, err
 	}
 
-	totalCount, err := q.auctionRepository.Count(ctx, input.State)
+	totalCount, err := q.auctionRepository.Count(ctx, state)
 	if err != nil {
 		q.logger.Error().Err(err).Msg("failed to count auctions")
 		return ListAuctionsQueryOutput{}, err

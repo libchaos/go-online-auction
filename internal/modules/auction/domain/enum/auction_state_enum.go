@@ -1,6 +1,8 @@
 package enum
 
-import "errors"
+import (
+	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/errs"
+)
 
 const (
 	EnumAuctionStateDraft     string = "draft"
@@ -38,7 +40,7 @@ func validateAuctionStateEnum(value string) error {
 	}
 
 	if _, ok := allowedValues[value]; !ok {
-		return errors.New("invalid auction state: " + value)
+		return errs.ErrInvalidAuctionState
 	}
 
 	return nil

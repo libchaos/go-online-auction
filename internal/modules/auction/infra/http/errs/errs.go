@@ -29,9 +29,10 @@ var (
 		http.StatusConflict,
 		nil,
 	)
-	ErrInvalidRequest   = errs.New("AUCTION_11", "Invalid request body", http.StatusBadRequest, nil)
-	ErrInvalidAuctionID = errs.New("AUCTION_12", "Invalid auction ID", http.StatusBadRequest, nil)
-	ErrAuctionExpired   = errs.New("AUCTION_13", "Auction has expired", http.StatusBadRequest, nil)
+	ErrInvalidRequest      = errs.New("AUCTION_11", "Invalid request body", http.StatusBadRequest, nil)
+	ErrInvalidAuctionID    = errs.New("AUCTION_12", "Invalid auction ID", http.StatusBadRequest, nil)
+	ErrAuctionExpired      = errs.New("AUCTION_13", "Auction has expired", http.StatusBadRequest, nil)
+	ErrInvalidAuctionState = errs.New("AUCTION_14", "Invalid auction state", http.StatusBadRequest, nil)
 )
 
 var domainToHTTPErrorMap = []struct {
@@ -49,6 +50,7 @@ var domainToHTTPErrorMap = []struct {
 	{domainerrs.ErrFirstBidMustBePositive, ErrBidAmountInvalid},
 	{domainerrs.ErrBidMustExceedHighest, ErrBidTooLow},
 	{domainerrs.ErrEndTimeMustBeInFuture, ErrInvalidEndTime},
+	{domainerrs.ErrInvalidAuctionState, ErrInvalidAuctionState},
 }
 
 func MapDomainError(err error) error {

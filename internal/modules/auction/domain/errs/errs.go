@@ -20,4 +20,5 @@ var (
 	ErrBidIDRequired                         = errors.New("bid id must be greater than zero")
 	ErrUserIDRequired                        = errors.New("user id must be greater than zero")
 	ErrEndTimeMustBeInFuture                 = errors.New("end time must be in the future")
+	ErrInvalidAuctionState                   = errors.New("invalid auction state")
 )

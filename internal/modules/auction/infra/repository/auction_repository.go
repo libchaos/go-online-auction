@@ -7,6 +7,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/enum"
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/errs"
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/model"
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/infra/entity"
@@ -155,7 +156,7 @@ func (r *PostgresAuctionRepository) Update(ctx context.Context, auction model.Au
 
 func (r *PostgresAuctionRepository) FindAllPaginated(
 	ctx context.Context,
-	state *string,
+	state *enum.AuctionStateEnum,
 	limit, offset int,
 ) ([]model.AuctionModel, error) {
 	var query string
@@ -216,7 +217,7 @@ func (r *PostgresAuctionRepository) FindAllPaginated(
 	return auctions, nil
 }
 
-func (r *PostgresAuctionRepository) Count(ctx context.Context, state *string) (uint64, error) {
+func (r *PostgresAuctionRepository) Count(ctx context.Context, state *enum.AuctionStateEnum) (uint64, error) {
 	var query string
 	var args []any
 
