@@ -132,6 +132,10 @@ func (a *AuctionModel) Start() error {
 	return nil
 }
 
+// PlaceBid validates and records a new bid on the auction.
+// Note: This domain validation provides fast-fail feedback before DB interaction.
+// The database trigger (check_bid_amount) provides the final guarantee against
+// race conditions by using FOR UPDATE lock during bid insertion.
 func (a *AuctionModel) PlaceBid(amount MoneyModel) error {
 	if a.state.String() != enum.EnumAuctionStateActive {
 		return errs.ErrBidsOnlyOnActiveAuctions

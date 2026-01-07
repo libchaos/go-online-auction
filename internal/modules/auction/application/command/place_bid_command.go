@@ -53,9 +53,11 @@ func (c *PlaceBidCommand) Execute(
 	}
 	defer func() { _ = uow.Rollback(ctx) }()
 
-	auction, err := uow.AuctionRepository().FindByIDForUpdate(ctx, input.AuctionID)
+	// Domain validation provides fast-fail for invalid bids
+	// DB trigger with FOR UPDATE ensures final integrity against race conditions
+	auction, err := uow.AuctionRepository().FindByID(ctx, input.AuctionID)
 	if err != nil {
-		c.logger.Error().Err(err).Uint64("auction_id", input.AuctionID).Msg("failed to find auction for update")
+		c.logger.Error().Err(err).Uint64("auction_id", input.AuctionID).Msg("failed to find auction")
 		return PlaceBidCommandOutput{}, err
 	}
 
