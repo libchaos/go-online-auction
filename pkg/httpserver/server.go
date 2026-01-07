@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -29,7 +30,11 @@ type Server struct {
 }
 
 // New creates a new HTTP server with Chi router and websocket upgrader.
-func New(cfg Config) *Server {
+func New(cfg Config) (*Server, error) {
+	if err := validateConfig(cfg); err != nil {
+		return nil, err
+	}
+
 	router := chi.NewRouter()
 
 	// Default middleware stack
@@ -72,7 +77,7 @@ func New(cfg Config) *Server {
 		router:   router,
 		upgrader: upgrader,
 		config:   cfg,
-	}
+	}, nil
 }
 
 // Router returns the Chi router for registering routes.
@@ -103,4 +108,15 @@ func (s *Server) Shutdown(ctx context.Context) error {
 // Addr returns the server address.
 func (s *Server) Addr() string {
 	return s.server.Addr
+}
+
+func validateConfig(cfg Config) error {
+	if cfg.Port <= 0 || cfg.Port > 65535 {
+		return fmt.Errorf("invalid port: %d", cfg.Port)
+	}
+	// validate host
+	if strings.TrimSpace(cfg.Host) == "" {
+		return fmt.Errorf("host cannot be empty")
+	}
+	return nil
 }

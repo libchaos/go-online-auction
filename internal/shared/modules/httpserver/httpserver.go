@@ -7,7 +7,7 @@ import (
 	"github.com/cristiano-pacheco/go-online-auction/pkg/httpserver"
 )
 
-func New(cfg config.Config) *httpserver.Server {
+func New(cfg config.Config) (*httpserver.Server, error) {
 	return httpserver.New(httpserver.Config{
 		Host:            cfg.HTTPServer.Host,
 		Port:            cfg.HTTPServer.Port,
