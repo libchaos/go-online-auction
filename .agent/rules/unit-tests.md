@@ -59,30 +59,6 @@ type MyStructTestSuite struct {
 
 func (s *MyStructTestSuite) SetupTest() {
 	// Initialize sut and dependencies
-  // example of config initialization
-  s.cfg = config.Config{
-		MAIL: config.MAIL{
-			Sender: "test@example.com",
-		},
-		App: config.App{
-			BaseURL: "https://example.com",
-			Name:    "Test App",
-			Version: "1.0.0",
-		},
-		Telemetry: config.Telemetry{
-			Enabled: false,
-		},
-		Log: config.Log{
-			LogLevel: "disabled",
-		},
-	}
-
-	// Initialize otel for testing
-	otel.Init(s.cfg)
-
-	// Use real logger but with disabled level
-	s.logger = logger.New(s.cfg)
-
 	s.sut = mypackage.New()
 }
 
@@ -133,15 +109,15 @@ func TestSomeFunction(t *testing.T) {
 
   - Use mocks or stubs to isolate dependencies as needed.
   - Mocks are already in place; no need to generate them.
+  - All mocks are located in the tests/mocks directory.
   - Example imports:
-     - user_repository_mocks "github.com/cristiano-pacheco/go-bidding-service/internal/identity/domain/repository/mocks"
-     - token_service_mocks "github.com/cristiano-pacheco/go-bidding-service/internal/identity/domain/service/mocks"
+     - "github.com/cristiano-pacheco/go-online-auction/tests/mocks"
 
 6. Mock Naming Convention:
 
   - Mocks follow the pattern MockType, for example:
-    - user_repository_mocks.MockUserRepository
-    - token_service_mocks.MockTokenService
+    - mocks.MockUserRepository
+    - mocks.MockTokenService
 
 7. Arrange-Act-Assert Pattern:
 
