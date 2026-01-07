@@ -17,3 +17,7 @@ func (m MoneyModel) AmountInCents() uint64 {
 func (m MoneyModel) IsGreaterThan(other MoneyModel) bool {
 	return m.amountInCents > other.amountInCents
 }
+
+func (m MoneyModel) IsGreaterThanOrEqual(other MoneyModel) bool {
+	return m.amountInCents > other.amountInCents
+}

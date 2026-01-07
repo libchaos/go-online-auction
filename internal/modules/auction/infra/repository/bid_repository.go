@@ -28,7 +28,7 @@ func NewPostgresBidRepository(db uow.DBExecutor, mapper *mapper.BidMapper) *Post
 	}
 }
 
-func (r *PostgresBidRepository) Create(ctx context.Context, bid model.BidModel) error {
+func (r *PostgresBidRepository) Create(ctx context.Context, bid model.BidModel) (model.BidModel, error) {
 	e := r.mapper.ToEntity(bid)
 
 	query := `
@@ -43,8 +43,16 @@ func (r *PostgresBidRepository) Create(ctx context.Context, bid model.BidModel) 
 		e.CreatedAt,
 		e.UpdatedAt,
 	).Scan(&e.ID)
+	if err != nil {
+		return model.BidModel{}, err
+	}
 
-	return err
+	persistedBid, err := r.mapper.ToDomain(e)
+	if err != nil {
+		return model.BidModel{}, err
+	}
+
+	return persistedBid, nil
 }
 
 func (r *PostgresBidRepository) FindByID(ctx context.Context, id uint64) (model.BidModel, error) {
