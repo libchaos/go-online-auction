@@ -1,10 +1,10 @@
 package handler
 
 import (
+	"crypto/rand"
+	"math/big"
 	"net/http"
 	"strconv"
-
-	"math/rand/v2"
 
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/application/command"
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/application/query"
@@ -226,8 +226,9 @@ func (h *AuctionHandler) PlaceBid(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// random user id (constrained to int64 max for PostgreSQL BIGINT compatibility)
-	// Using math/rand/v2.IntN to generate a value in range [0, max_int64]
-	userID := uint64(rand.IntN(10))
+	// Using crypto/rand to generate a secure random value in range [1, 100]
+	randomNum, _ := rand.Int(rand.Reader, big.NewInt(100))
+	userID := uint64(randomNum.Int64() + 1)
 
 	_, err = h.placeBidCommand.Execute(r.Context(), command.PlaceBidCommandInput{
 		AuctionID:     auctionID,

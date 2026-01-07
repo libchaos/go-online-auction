@@ -236,18 +236,3 @@ func validateRestoreAuction(listingID uint64, endTime time.Time) error {
 
 	return nil
 }
-
-func validateBidAmount(amount MoneyModel, currentHighestBid *BidModel) error {
-	if currentHighestBid == nil {
-		if amount.AmountInCents() == 0 {
-			return errs.ErrFirstBidMustBePositive
-		}
-		return nil
-	}
-
-	if !amount.IsGreaterThan(currentHighestBid.Amount()) {
-		return errs.ErrBidMustExceedHighest
-	}
-
-	return nil
-}

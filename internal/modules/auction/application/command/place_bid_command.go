@@ -70,21 +70,21 @@ func (c *PlaceBidCommand) Execute(
 		return PlaceBidCommandOutput{}, err
 	}
 
-	persistedBid, err := uow.BidRepository().Create(ctx, bid)
-	if err != nil {
-		c.logger.Error().Err(err).
-			Uint64("auction_id", input.AuctionID).
-			Uint64("user_id", input.UserID).
-			Msg("failed to persist bid")
-		return PlaceBidCommandOutput{}, err
-	}
-
 	err = auction.PlaceBid(money)
 	if err != nil {
 		c.logger.Error().Err(err).
 			Uint64("auction_id", input.AuctionID).
 			Uint64("user_id", input.UserID).
 			Msg("failed to place bid on auction")
+		return PlaceBidCommandOutput{}, err
+	}
+
+	persistedBid, err := uow.BidRepository().Create(ctx, bid)
+	if err != nil {
+		c.logger.Error().Err(err).
+			Uint64("auction_id", input.AuctionID).
+			Uint64("user_id", input.UserID).
+			Msg("failed to persist bid")
 		return PlaceBidCommandOutput{}, err
 	}
 
