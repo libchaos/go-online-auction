@@ -21,6 +21,19 @@ Unit tests
 
 ## Implementation Rules
 
+### CRITICAL: Package Naming
+- **ALWAYS** use the `_test` suffix for the package name in test files
+- **NEVER** duplicate the package declaration
+- Example of CORRECT package declaration:
+```go
+  package mypackage_test
+```
+- Example of INCORRECT package declaration:
+```go
+  package mypackage
+  package mypackage  // ❌ NEVER duplicate
+```
+
 1. Test Suites for Structs with Dependencies:
 
   - Use suite.Suite from testify.
@@ -28,38 +41,32 @@ Unit tests
   - Implement a SetupTest method to initialize the sut and its dependencies.
   - Do not use .AssertExpectations(s.T()).
   - Identify the constructor for the type and use it. Generally the name is NewTypeName, example NewAccountValidator(deps...)
-  - Always use _test suffix for the package name in the tests
-  - for test suite always use suite instead of assert, example: 
-    example:
-     - suite.Equals(v, 10)
-  - for error assertion on the suite tests, always use suite.Require(). 
-    example:
-    - suite.Require().ErrorIs
-    - suite.Require().Error 
-  - for error assertion on the non suite tests, always use require. 
-     example:  
-     - require.ErrorIs
-     - require.Error
+  - **Package name must ALWAYS use `_test` suffix** (e.g., `package mypackage_test`)
+  - For test suite always use suite instead of assert, example: 
+    - `suite.Equal(v, 10)`
+  - For error assertion on the suite tests, always use `suite.Require()`: 
+    - `suite.Require().ErrorIs(err, expectedErr)`
+    - `suite.Require().Error(err)` 
+  - For error assertion on the non suite tests, always use require: 
+    - `require.ErrorIs(t, err, expectedErr)`
+    - `require.Error(t, err)`
 
-- test suite example:
+- Test suite example:
 ```go
 package mypackage_test
 
 import (
 	"testing"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
 
-// Test suite for structs with dependencies
 type MyStructTestSuite struct {
 	suite.Suite
 	sut *mypackage.MyStruct
 }
 
 func (s *MyStructTestSuite) SetupTest() {
-	// Initialize sut and dependencies
-	s.sut = mypackage.New()
+	s.sut = mypackage.NewMyStruct()
 }
 
 func TestMyStructSuite(t *testing.T) {
@@ -67,31 +74,42 @@ func TestMyStructSuite(t *testing.T) {
 }
 
 func (s *MyStructTestSuite) TestSomeMethod() {
-  // Arrange
-  // Act
+	// Arrange
+	
+	// Act
+	
 	// Assert
 }
 ```
 
-1.1 on mocks always pass mock.Anything for contexts.
-For example: 
-s.recurringPaymentRepoMock.On("Update", mock.Anything, payment).Return(nil)
-
-1. Tests for Functions Without Instances:
-  
-  - Create individual test functions using func TestXxx(t *testing.T).
-  - Use t.Run for subtests covering different scenarios.
-  - example:
-
+1.1 On mocks always pass `mock.Anything` for contexts.
+Example: 
 ```go
+s.recurringPaymentRepoMock.On("Update", mock.Anything, payment).Return(nil)
+```
+
+2. Tests for Functions Without Instances:
+  
+  - Create individual test functions using `func TestXxx(t *testing.T)`.
+  - Use `t.Run` for subtests covering different scenarios.
+  - **Package name must ALWAYS use `_test` suffix** (e.g., `package mypackage_test`)
+  - Example:
+```go
+package mypackage_test
+
+import "testing"
+
 func TestSomeFunction(t *testing.T) {
 	t.Run("scenario description", func(t *testing.T) {
 		// Arrange
+		
 		// Act
+		
 		// Assert
 	})
 }
 ```
+
 3. Test Coverage:
   
   - Include happy path scenarios.
@@ -102,8 +120,8 @@ func TestSomeFunction(t *testing.T) {
 
 4. Using Assertions:
 
-  - Use testify assertion functions (e.g., s.True(result) instead of assert.True(s.T(), result)).
-  - Avoid .AssertExpectations(s.T()).
+  - Use testify assertion functions (e.g., `s.Equal(expected, actual)` instead of `assert.Equal(s.T(), expected, actual)`).
+  - Avoid `.AssertExpectations(s.T())`.
 
 5. Mocks and Stubs:
 
@@ -111,13 +129,13 @@ func TestSomeFunction(t *testing.T) {
   - Mocks are already in place; no need to generate them.
   - All mocks are located in the tests/mocks directory.
   - Example imports:
-     - "github.com/cristiano-pacheco/go-online-auction/tests/mocks"
+     - `"github.com/cristiano-pacheco/go-online-auction/tests/mocks"`
 
 6. Mock Naming Convention:
 
   - Mocks follow the pattern MockType, for example:
-    - mocks.MockUserRepository
-    - mocks.MockTokenService
+    - `mocks.MockUserRepository`
+    - `mocks.MockTokenService`
 
 7. Arrange-Act-Assert Pattern:
 
@@ -125,18 +143,20 @@ func TestSomeFunction(t *testing.T) {
     - Arrange: prepare environment and data
     - Act: perform the action being tested
     - Assert: verify the results
-    - In the code the comments must be in the pattern below:
-    ```
+  - In the code the comments must be in the pattern below:
+```go
     // Arrange
+    
     // Act
+    
     // Assert
-    ```
+```
 
 8. Naming and Clarity:
 
   - Test names must clearly indicate what is being tested.
   - Add comments for complex test setups or assertions if needed.
-  - Never use inline struct construction, always create a new varialbe and assigns the instance to it.
-  - Each line has to have in max 120 characters.
+  - Never use inline struct construction, always create a new variable and assigns the instance to it.
+  - Each line has to have max 120 characters.
 
-9. Never explain the test after generating the code. Just say Tests Done, Oh Yeah! when the process is finished.
+9. Never explain the test after generating the code. Just say "Tests Done, Oh Yeah!" when the process is finished.
