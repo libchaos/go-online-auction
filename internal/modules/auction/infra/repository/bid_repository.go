@@ -3,8 +3,10 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/errs"
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/model"
@@ -12,6 +14,14 @@ import (
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/infra/mapper"
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/ports"
 	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/uow"
+)
+
+const (
+	// PostgreSQL error codes
+	pgCheckViolationCode = "23514"
+
+	// Error message patterns
+	bidMustBeHigherErrMsg = "must be higher than current highest bid"
 )
 
 var _ ports.BidRepository = (*PostgresBidRepository)(nil)
@@ -44,6 +54,13 @@ func (r *PostgresBidRepository) Create(ctx context.Context, bid model.BidModel) 
 		e.UpdatedAt,
 	).Scan(&e.ID)
 	if err != nil {
+		// Check if it's a PostgreSQL error from the check_bid_amount trigger
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			if pgErr.Code == pgCheckViolationCode && strings.Contains(pgErr.Message, bidMustBeHigherErrMsg) {
+				return model.BidModel{}, errs.ErrBidMustExceedHighest
+			}
+		}
 		return model.BidModel{}, err
 	}
 
