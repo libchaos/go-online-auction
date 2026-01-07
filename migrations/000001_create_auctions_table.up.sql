@@ -9,7 +9,6 @@ CREATE TABLE auctions (
     start_time     TIMESTAMPTZ,
     end_time       TIMESTAMPTZ NOT NULL,
     state          auction_state NOT NULL DEFAULT 'draft',
-    highest_bid_id BIGINT,
     highest_bid_amount_in_cents BIGINT,
     version        BIGINT NOT NULL DEFAULT 1,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
