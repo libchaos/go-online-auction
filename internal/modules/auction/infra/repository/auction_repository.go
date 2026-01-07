@@ -173,13 +173,14 @@ func (r *PostgresAuctionRepository) FindAllPaginated(
 	var args []any
 
 	if state != nil {
+		stateStr := state.String()
 		query = `
 			SELECT id, listing_id, start_time, end_time, state, highest_bid_id, highest_bid_amount_in_cents, version, created_at, updated_at
 			FROM auctions
 			WHERE state = $1
 			ORDER BY created_at DESC
 			LIMIT $2 OFFSET $3`
-		args = []any{*state, limit, offset}
+		args = []any{stateStr, limit, offset}
 	} else {
 		query = `
 			SELECT id, listing_id, start_time, end_time, state, highest_bid_id, highest_bid_amount_in_cents, version, created_at, updated_at
@@ -232,8 +233,9 @@ func (r *PostgresAuctionRepository) Count(ctx context.Context, state *enum.Aucti
 	var args []any
 
 	if state != nil {
+		stateStr := state.String()
 		query = `SELECT COUNT(*) FROM auctions WHERE state = $1`
-		args = []any{*state}
+		args = []any{stateStr}
 	} else {
 		query = `SELECT COUNT(*) FROM auctions`
 		args = []any{}
