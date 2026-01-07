@@ -320,4 +320,3 @@ func (s *GetAuctionByIDQueryTestSuite) TestExecute_WithMultipleBids_ReturnsAllBi
 		s.Equal(uint64(5000+(i+1)*1000), result.Bids[i].AmountInCents)
 	}
 }
-
