@@ -3,6 +3,7 @@ package redis
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -53,7 +54,7 @@ func New(cfg Config) (redis.UniversalClient, error) {
 func validateConfig(cfg Config) error {
 	clientType := strings.TrimSpace(string(cfg.ClientType))
 	if clientType == "" {
-		return fmt.Errorf("redis client type cannot be empty")
+		return errors.New("redis client type cannot be empty")
 	}
 
 	if clientType != string(ClientTypeSingleNode) && clientType != string(ClientTypeCluster) {
@@ -61,7 +62,7 @@ func validateConfig(cfg Config) error {
 	}
 
 	if strings.TrimSpace(cfg.URL) == "" {
-		return fmt.Errorf("redis URL cannot be empty")
+		return errors.New("redis URL cannot be empty")
 	}
 
 	return nil

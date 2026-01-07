@@ -14,12 +14,16 @@ type AuctionStartedEvent struct {
 	endTime   time.Time
 }
 
-func NewAuctionStartedEvent(auctionID, listingID uint64, startTime, endTime time.Time) AuctionStartedEvent {
+func NewAuctionStartedEvent(auctionID, listingID uint64, startTime *time.Time, endTime time.Time) AuctionStartedEvent {
+	var st time.Time
+	if startTime != nil {
+		st = *startTime
+	}
 	return AuctionStartedEvent{
 		DomainEvent: newDomainEvent(),
 		auctionID:   auctionID,
 		listingID:   listingID,
-		startTime:   startTime,
+		startTime:   st,
 		endTime:     endTime,
 	}
 }

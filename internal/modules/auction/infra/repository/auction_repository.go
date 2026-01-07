@@ -30,7 +30,10 @@ func NewPostgresAuctionRepository(db uow.DBExecutor, mapper *mapper.AuctionMappe
 	}
 }
 
-func (r *PostgresAuctionRepository) Create(ctx context.Context, auction model.AuctionModel) (model.AuctionModel, error) {
+func (r *PostgresAuctionRepository) Create(
+	ctx context.Context,
+	auction model.AuctionModel,
+) (model.AuctionModel, error) {
 	e := r.mapper.ToEntity(auction)
 
 	query := `
@@ -48,6 +51,9 @@ func (r *PostgresAuctionRepository) Create(ctx context.Context, auction model.Au
 		e.CreatedAt,
 		e.UpdatedAt,
 	).Scan(&e.ID)
+	if err != nil {
+		return model.AuctionModel{}, err
+	}
 
 	persistedAuction, err := r.mapper.ToDomain(e)
 	if err != nil {

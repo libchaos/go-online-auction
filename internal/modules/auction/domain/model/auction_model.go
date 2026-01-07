@@ -10,7 +10,7 @@ import (
 type AuctionModel struct {
 	id               uint64
 	listingID        uint64
-	startTime        time.Time
+	startTime        *time.Time // nil for draft auctions
 	endTime          time.Time
 	state            enum.AuctionStateEnum
 	highestBidID     *uint64
@@ -45,7 +45,8 @@ func NewAuctionModel(listingID uint64, endTime time.Time) (AuctionModel, error) 
 
 func RestoreAuctionModel(
 	id, listingID uint64,
-	startTime, endTime time.Time,
+	startTime *time.Time,
+	endTime time.Time,
 	state enum.AuctionStateEnum,
 	highestBidID *uint64,
 	highestBidAmount *uint64,
@@ -60,10 +61,16 @@ func RestoreAuctionModel(
 		return AuctionModel{}, err
 	}
 
+	var normalizedStartTime *time.Time
+	if startTime != nil {
+		utc := startTime.UTC()
+		normalizedStartTime = &utc
+	}
+
 	return AuctionModel{
 		id:               id,
 		listingID:        listingID,
-		startTime:        startTime.UTC(),
+		startTime:        normalizedStartTime,
 		endTime:          endTime.UTC(),
 		state:            state,
 		highestBidID:     highestBidID,
@@ -82,7 +89,7 @@ func (a *AuctionModel) ListingID() uint64 {
 	return a.listingID
 }
 
-func (a *AuctionModel) StartTime() time.Time {
+func (a *AuctionModel) StartTime() *time.Time {
 	return a.startTime
 }
 
@@ -125,7 +132,7 @@ func (a *AuctionModel) Start() error {
 	}
 
 	now := time.Now().UTC()
-	a.startTime = now
+	a.startTime = &now
 	a.state = activeState
 	a.version++
 	a.updatedAt = now

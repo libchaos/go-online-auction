@@ -31,8 +31,9 @@ type AuctionSummaryOutput struct {
 	ID                      uint64
 	ListingID               uint64
 	State                   string
-	StartTime               time.Time
 	EndTime                 time.Time
+	CreatedAt               time.Time
+	StartTime               *time.Time
 	HighestBidAmountInCents *uint64
 }
 
@@ -100,6 +101,7 @@ func (q *ListAuctionsQuery) Execute(
 			StartTime:               auction.StartTime(),
 			EndTime:                 auction.EndTime(),
 			HighestBidAmountInCents: auction.HighestBidAmount(),
+			CreatedAt:               auction.CreatedAt(),
 		})
 	}
 

@@ -71,7 +71,7 @@ func TestRestoreAuctionModel(t *testing.T) {
 		auction, err := model.RestoreAuctionModel(
 			id,
 			listingID,
-			startTime,
+			&startTime,
 			endTime,
 			state,
 			&highestBidID,
@@ -85,7 +85,8 @@ func TestRestoreAuctionModel(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, id, auction.ID())
 		require.Equal(t, listingID, auction.ListingID())
-		require.Equal(t, startTime, auction.StartTime())
+		require.NotNil(t, auction.StartTime())
+		require.Equal(t, startTime, *auction.StartTime())
 		require.Equal(t, endTime, auction.EndTime())
 		require.Equal(t, version, auction.Version())
 		require.Equal(t, now, auction.CreatedAt())
@@ -105,7 +106,7 @@ func TestRestoreAuctionModel(t *testing.T) {
 		_, err := model.RestoreAuctionModel(
 			0,
 			100,
-			now,
+			&now,
 			now.Add(24*time.Hour),
 			state,
 			nil,
@@ -128,7 +129,7 @@ func TestRestoreAuctionModel(t *testing.T) {
 		_, err := model.RestoreAuctionModel(
 			1,
 			0,
-			now,
+			&now,
 			now.Add(24*time.Hour),
 			state,
 			nil,
@@ -151,7 +152,7 @@ func TestRestoreAuctionModel(t *testing.T) {
 		_, err := model.RestoreAuctionModel(
 			1,
 			100,
-			now,
+			&now,
 			time.Time{},
 			state,
 			nil,
@@ -181,7 +182,7 @@ func TestAuctionModel_Start(t *testing.T) {
 		state := auction.State()
 		require.Equal(t, enum.EnumAuctionStateActive, state.String())
 		require.NotZero(t, auction.StartTime())
-		require.Equal(t, uint64(1), auction.Version())
+		require.Equal(t, uint64(2), auction.Version())
 	})
 
 	t.Run("returns error when starting non-draft auction", func(t *testing.T) {
@@ -220,7 +221,7 @@ func TestAuctionModel_PlaceBid(t *testing.T) {
 		require.Equal(t, bidID, *auction.HighestBidID())
 		require.NotNil(t, auction.HighestBidAmount())
 		require.Equal(t, amountInCents, *auction.HighestBidAmount())
-		require.Equal(t, uint64(2), auction.Version())
+		require.Equal(t, uint64(3), auction.Version())
 	})
 
 	t.Run("updates existing highest bid", func(t *testing.T) {
@@ -278,11 +279,12 @@ func TestAuctionModel_PlaceBid(t *testing.T) {
 		now := time.Now().UTC()
 		pastEndTime := now.Add(-1 * time.Hour)
 		state, _ := enum.NewAuctionStateEnum(enum.EnumAuctionStateActive)
+		startTime := now.Add(-2 * time.Hour)
 
 		auction, _ := model.RestoreAuctionModel(
 			1,
 			100,
-			now.Add(-2*time.Hour),
+			&startTime,
 			pastEndTime,
 			state,
 			nil,
@@ -366,7 +368,7 @@ func TestAuctionModel_Close(t *testing.T) {
 		require.NoError(t, err)
 		state := auction.State()
 		require.Equal(t, enum.EnumAuctionStateClosed, state.String())
-		require.Equal(t, uint64(2), auction.Version())
+		require.Equal(t, uint64(3), auction.Version())
 	})
 
 	t.Run("returns error when closing non-active auction", func(t *testing.T) {
@@ -397,7 +399,7 @@ func TestAuctionModel_Cancel(t *testing.T) {
 		require.NoError(t, err)
 		state := auction.State()
 		require.Equal(t, enum.EnumAuctionStateCancelled, state.String())
-		require.Equal(t, uint64(1), auction.Version())
+		require.Equal(t, uint64(2), auction.Version())
 	})
 
 	t.Run("cancels active auction successfully", func(t *testing.T) {
@@ -438,11 +440,12 @@ func TestAuctionModel_CheckAndCloseIfExpired(t *testing.T) {
 		now := time.Now().UTC()
 		pastEndTime := now.Add(-1 * time.Hour)
 		activeState, _ := enum.NewAuctionStateEnum(enum.EnumAuctionStateActive)
+		startTime := now.Add(-2 * time.Hour)
 
 		auction, _ := model.RestoreAuctionModel(
 			1,
 			100,
-			now.Add(-2*time.Hour),
+			&startTime,
 			pastEndTime,
 			activeState,
 			nil,

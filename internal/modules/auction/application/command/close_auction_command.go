@@ -19,7 +19,7 @@ type CloseAuctionCommandOutput struct {
 	ListingID    uint64
 	State        string
 	HighestBidID *uint64
-	StartTime    time.Time
+	StartTime    *time.Time
 	EndTime      time.Time
 	UpdatedAt    time.Time
 }

@@ -17,7 +17,7 @@ type StartAuctionCommandOutput struct {
 	ID        uint64
 	ListingID uint64
 	State     string
-	StartTime time.Time
+	StartTime *time.Time
 	EndTime   time.Time
 	UpdatedAt time.Time
 }

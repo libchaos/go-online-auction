@@ -31,7 +31,7 @@ func (s *AuctionMapperTestSuite) TestToDomain_ValidEntity_ReturnsAuctionModel() 
 	e := entity.AuctionEntity{
 		ID:           1,
 		ListingID:    10,
-		StartTime:    now,
+		StartTime:    &now,
 		EndTime:      now.Add(24 * time.Hour),
 		State:        "active",
 		HighestBidID: &highestBidID,
@@ -47,7 +47,8 @@ func (s *AuctionMapperTestSuite) TestToDomain_ValidEntity_ReturnsAuctionModel() 
 	s.Require().NoError(err)
 	s.Equal(e.ID, result.ID())
 	s.Equal(e.ListingID, result.ListingID())
-	s.Equal(e.StartTime.UTC(), result.StartTime())
+	s.NotNil(result.StartTime())
+	s.Equal(e.StartTime.UTC(), *result.StartTime())
 	s.Equal(e.EndTime.UTC(), result.EndTime())
 	state := result.State()
 	s.Equal(e.State, state.String())
@@ -64,7 +65,7 @@ func (s *AuctionMapperTestSuite) TestToDomain_NilHighestBidID_ReturnsAuctionMode
 	e := entity.AuctionEntity{
 		ID:           1,
 		ListingID:    10,
-		StartTime:    now,
+		StartTime:    &now,
 		EndTime:      now.Add(24 * time.Hour),
 		State:        "draft",
 		HighestBidID: nil,
@@ -87,7 +88,7 @@ func (s *AuctionMapperTestSuite) TestToDomain_InvalidState_ReturnsError() {
 	e := entity.AuctionEntity{
 		ID:           1,
 		ListingID:    10,
-		StartTime:    now,
+		StartTime:    &now,
 		EndTime:      now.Add(24 * time.Hour),
 		State:        "invalid_state",
 		HighestBidID: nil,
@@ -112,7 +113,7 @@ func (s *AuctionMapperTestSuite) TestToEntity_ValidAuctionModel_ReturnsAuctionEn
 	auction, err := model.RestoreAuctionModel(
 		1,
 		10,
-		now,
+		&now,
 		now.Add(24*time.Hour),
 		state,
 		&highestBidID,
@@ -147,7 +148,7 @@ func (s *AuctionMapperTestSuite) TestToEntity_NilHighestBidID_ReturnsEntityWithN
 	auction, err := model.RestoreAuctionModel(
 		1,
 		10,
-		now,
+		nil,
 		now.Add(24*time.Hour),
 		state,
 		nil,
@@ -174,7 +175,7 @@ func (s *AuctionMapperTestSuite) TestToDomain_WithHighestBidAmount_MapsCorrectly
 	e := entity.AuctionEntity{
 		ID:                      1,
 		ListingID:               10,
-		StartTime:               now,
+		StartTime:               &now,
 		EndTime:                 now.Add(24 * time.Hour),
 		State:                   "active",
 		HighestBidID:            &highestBidID,
@@ -199,7 +200,7 @@ func (s *AuctionMapperTestSuite) TestToDomain_NilHighestBidAmount_ReturnsNilAmou
 	e := entity.AuctionEntity{
 		ID:                      1,
 		ListingID:               10,
-		StartTime:               now,
+		StartTime:               &now,
 		EndTime:                 now.Add(24 * time.Hour),
 		State:                   "draft",
 		HighestBidID:            nil,
@@ -226,7 +227,7 @@ func (s *AuctionMapperTestSuite) TestToEntity_WithHighestBidAmount_MapsCorrectly
 	auction, err := model.RestoreAuctionModel(
 		1,
 		10,
-		now,
+		&now,
 		now.Add(24*time.Hour),
 		state,
 		&highestBidID,

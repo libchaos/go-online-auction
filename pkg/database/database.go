@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -156,16 +157,16 @@ func mapLogLevel(level LogLevel) tracelog.LogLevel {
 
 func validateConfig(cfg Config) error {
 	if cfg.Host == "" {
-		return fmt.Errorf("database host is required")
+		return errors.New("database host is required")
 	}
 	if cfg.Port <= 0 || cfg.Port > 65535 {
-		return fmt.Errorf("database port must be between 1 and 65535")
+		return errors.New("database port must be between 1 and 65535")
 	}
 	if cfg.User == "" {
-		return fmt.Errorf("database user is required")
+		return errors.New("database user is required")
 	}
 	if cfg.Name == "" {
-		return fmt.Errorf("database name is required")
+		return errors.New("database name is required")
 	}
 	return nil
 }

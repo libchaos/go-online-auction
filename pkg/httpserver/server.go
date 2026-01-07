@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -56,7 +57,7 @@ func New(cfg Config) (*Server, error) {
 	}))
 
 	// add a healthy check endpoint
-	router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
+	router.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
@@ -122,7 +123,7 @@ func validateConfig(cfg Config) error {
 	}
 	// validate host
 	if strings.TrimSpace(cfg.Host) == "" {
-		return fmt.Errorf("host cannot be empty")
+		return errors.New("host cannot be empty")
 	}
 	return nil
 }

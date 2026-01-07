@@ -107,7 +107,7 @@ func (h *AuctionHandler) List(w http.ResponseWriter, r *http.Request) {
 			EndTime:                 auction.EndTime,
 			HighestBidID:            nil,
 			HighestBidAmountInCents: auction.HighestBidAmountInCents,
-			CreatedAt:               auction.StartTime,
+			CreatedAt:               auction.CreatedAt,
 		})
 	}
 
