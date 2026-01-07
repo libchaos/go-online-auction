@@ -163,4 +163,84 @@ func (s *AuctionMapperTestSuite) TestToEntity_NilHighestBidID_ReturnsEntityWithN
 
 	// Assert
 	s.Nil(result.HighestBidID)
+	s.Nil(result.HighestBidAmountInCents)
+}
+
+func (s *AuctionMapperTestSuite) TestToDomain_WithHighestBidAmount_MapsCorrectly() {
+	// Arrange
+	now := time.Now().UTC()
+	highestBidID := uint64(100)
+	highestBidAmount := uint64(5000)
+	e := entity.AuctionEntity{
+		ID:                      1,
+		ListingID:               10,
+		StartTime:               now,
+		EndTime:                 now.Add(24 * time.Hour),
+		State:                   "active",
+		HighestBidID:            &highestBidID,
+		HighestBidAmountInCents: &highestBidAmount,
+		Version:                 5,
+		CreatedAt:               now,
+		UpdatedAt:               now,
+	}
+
+	// Act
+	result, err := s.sut.ToDomain(e)
+
+	// Assert
+	s.Require().NoError(err)
+	s.NotNil(result.HighestBidAmount())
+	s.Equal(highestBidAmount, *result.HighestBidAmount())
+}
+
+func (s *AuctionMapperTestSuite) TestToDomain_NilHighestBidAmount_ReturnsNilAmount() {
+	// Arrange
+	now := time.Now().UTC()
+	e := entity.AuctionEntity{
+		ID:                      1,
+		ListingID:               10,
+		StartTime:               now,
+		EndTime:                 now.Add(24 * time.Hour),
+		State:                   "draft",
+		HighestBidID:            nil,
+		HighestBidAmountInCents: nil,
+		Version:                 0,
+		CreatedAt:               now,
+		UpdatedAt:               now,
+	}
+
+	// Act
+	result, err := s.sut.ToDomain(e)
+
+	// Assert
+	s.Require().NoError(err)
+	s.Nil(result.HighestBidAmount())
+}
+
+func (s *AuctionMapperTestSuite) TestToEntity_WithHighestBidAmount_MapsCorrectly() {
+	// Arrange
+	now := time.Now().UTC()
+	highestBidID := uint64(100)
+	highestBidAmount := uint64(5000)
+	state, _ := enum.NewAuctionStateEnum("active")
+	auction, err := model.RestoreAuctionModel(
+		1,
+		10,
+		now,
+		now.Add(24*time.Hour),
+		state,
+		&highestBidID,
+		&highestBidAmount,
+		5,
+		now,
+		now,
+	)
+	s.Require().NoError(err)
+
+	// Act
+	result := s.sut.ToEntity(auction)
+
+	// Assert
+	s.NotNil(result.HighestBidAmountInCents)
+	s.Equal(highestBidAmount, *result.HighestBidAmountInCents)
 }
