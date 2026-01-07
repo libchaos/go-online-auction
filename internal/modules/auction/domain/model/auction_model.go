@@ -8,15 +8,16 @@ import (
 )
 
 type AuctionModel struct {
-	id           uint64
-	listingID    uint64
-	startTime    time.Time
-	endTime      time.Time
-	state        enum.AuctionStateEnum
-	highestBidID *uint64 // nil if no bids yet
-	version      uint64  // for optimistic locking
-	createdAt    time.Time
-	updatedAt    time.Time
+	id               uint64
+	listingID        uint64
+	startTime        time.Time
+	endTime          time.Time
+	state            enum.AuctionStateEnum
+	highestBidID     *uint64
+	highestBidAmount *uint64 // nil if no bids yet
+	version          uint64  // for optimistic locking
+	createdAt        time.Time
+	updatedAt        time.Time
 }
 
 func NewAuctionModel(listingID uint64, endTime time.Time) (AuctionModel, error) {
@@ -31,13 +32,14 @@ func NewAuctionModel(listingID uint64, endTime time.Time) (AuctionModel, error) 
 
 	now := time.Now().UTC()
 	return AuctionModel{
-		listingID:    listingID,
-		endTime:      endTime.UTC(),
-		state:        draftState,
-		highestBidID: nil,
-		version:      0,
-		createdAt:    now,
-		updatedAt:    now,
+		listingID:        listingID,
+		endTime:          endTime.UTC(),
+		state:            draftState,
+		highestBidID:     nil,
+		highestBidAmount: nil,
+		version:          0,
+		createdAt:        now,
+		updatedAt:        now,
 	}, nil
 }
 
@@ -46,6 +48,7 @@ func RestoreAuctionModel(
 	startTime, endTime time.Time,
 	state enum.AuctionStateEnum,
 	highestBidID *uint64,
+	highestBidAmount *uint64,
 	version uint64,
 	createdAt, updatedAt time.Time,
 ) (AuctionModel, error) {
@@ -58,15 +61,16 @@ func RestoreAuctionModel(
 	}
 
 	return AuctionModel{
-		id:           id,
-		listingID:    listingID,
-		startTime:    startTime.UTC(),
-		endTime:      endTime.UTC(),
-		state:        state,
-		highestBidID: highestBidID,
-		version:      version,
-		createdAt:    createdAt.UTC(),
-		updatedAt:    updatedAt.UTC(),
+		id:               id,
+		listingID:        listingID,
+		startTime:        startTime.UTC(),
+		endTime:          endTime.UTC(),
+		state:            state,
+		highestBidID:     highestBidID,
+		highestBidAmount: highestBidAmount,
+		version:          version,
+		createdAt:        createdAt.UTC(),
+		updatedAt:        updatedAt.UTC(),
 	}, nil
 }
 
@@ -92,6 +96,10 @@ func (a *AuctionModel) State() enum.AuctionStateEnum {
 
 func (a *AuctionModel) HighestBidID() *uint64 {
 	return a.highestBidID
+}
+
+func (a *AuctionModel) HighestBidAmount() *uint64 {
+	return a.highestBidAmount
 }
 
 func (a *AuctionModel) Version() uint64 {
@@ -139,6 +147,8 @@ func (a *AuctionModel) PlaceBid(bidID uint64, amount MoneyModel, currentHighestB
 	}
 
 	a.highestBidID = &bidID
+	amountInCents := amount.AmountInCents()
+	a.highestBidAmount = &amountInCents
 	a.version++
 	a.updatedAt = time.Now().UTC()
 

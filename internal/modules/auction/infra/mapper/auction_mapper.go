@@ -25,6 +25,7 @@ func (m *AuctionMapper) ToDomain(e entity.AuctionEntity) (model.AuctionModel, er
 		e.EndTime,
 		state,
 		e.HighestBidID,
+		nil, // TODO: Map highestBidAmount in Task 2.0
 		e.Version,
 		e.CreatedAt,
 		e.UpdatedAt,

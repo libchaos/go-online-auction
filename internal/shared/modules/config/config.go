@@ -10,7 +10,6 @@ import (
 
 type Config struct {
 	Environment string     `mapstructure:"ENVIRONMENT"`
-	HTTPPort    uint       `mapstructure:"HTTP_PORT"`
 	CORS        CORS       `mapstructure:",squash"`
 	DB          DB         `mapstructure:",squash"`
 	App         App        `mapstructure:",squash"`
