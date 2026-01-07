@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"strconv"
 
+	"math/rand/v2"
+
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/application/command"
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/application/query"
 	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/infra/http/dto"
@@ -225,9 +227,12 @@ func (h *AuctionHandler) PlaceBid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// random user id
+	userID := rand.Uint64()
+
 	output, err := h.placeBidCommand.Execute(r.Context(), command.PlaceBidCommandInput{
 		AuctionID:     auctionID,
-		UserID:        req.UserID,
+		UserID:        userID,
 		AmountInCents: req.AmountInCents,
 	})
 	if err != nil {

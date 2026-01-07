@@ -3,7 +3,6 @@ package dto
 import "time"
 
 type PlaceBidRequest struct {
-	UserID        uint64 `json:"user_id"`
 	AmountInCents uint64 `json:"amount_in_cents"`
 }
 
