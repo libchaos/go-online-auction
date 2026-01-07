@@ -69,13 +69,13 @@ func (h *AuctionHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = response.JSON(w, http.StatusCreated, response.NewEnvelope(dto.AuctionResponse{
+	_ = response.JSON(w, http.StatusCreated, dto.AuctionResponse{
 		ID:        output.ID,
 		ListingID: output.ListingID,
 		State:     output.State,
 		EndTime:   output.EndTime,
 		CreatedAt: output.CreatedAt,
-	}), nil)
+	}, nil)
 }
 
 func (h *AuctionHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -112,12 +112,12 @@ func (h *AuctionHandler) List(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	_ = response.JSON(w, http.StatusOK, response.NewEnvelope(dto.AuctionListResponse{
+	_ = response.JSON(w, http.StatusOK, dto.AuctionListResponse{
 		Auctions:   auctions,
 		TotalCount: output.TotalCount,
 		Limit:      output.Limit,
 		Offset:     output.Offset,
-	}), nil)
+	}, nil)
 }
 
 func (h *AuctionHandler) GetByID(w http.ResponseWriter, r *http.Request) {
@@ -147,7 +147,7 @@ func (h *AuctionHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	_ = response.JSON(w, http.StatusOK, response.NewEnvelope(dto.AuctionDetailResponse{
+	_ = response.JSON(w, http.StatusOK, dto.AuctionDetailResponse{
 		Auction: dto.AuctionResponse{
 			ID:                      output.Auction.ID,
 			ListingID:               output.Auction.ListingID,
@@ -158,7 +158,7 @@ func (h *AuctionHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 			CreatedAt:               output.Auction.CreatedAt,
 		},
 		Bids: bids,
-	}), nil)
+	}, nil)
 }
 
 func (h *AuctionHandler) Start(w http.ResponseWriter, r *http.Request) {
@@ -177,13 +177,13 @@ func (h *AuctionHandler) Start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = response.JSON(w, http.StatusOK, response.NewEnvelope(dto.AuctionResponse{
+	_ = response.JSON(w, http.StatusOK, dto.AuctionResponse{
 		ID:        output.ID,
 		ListingID: output.ListingID,
 		State:     output.State,
 		StartTime: output.StartTime,
 		EndTime:   output.EndTime,
-	}), nil)
+	}, nil)
 }
 
 func (h *AuctionHandler) Cancel(w http.ResponseWriter, r *http.Request) {
@@ -202,13 +202,13 @@ func (h *AuctionHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = response.JSON(w, http.StatusOK, response.NewEnvelope(dto.AuctionResponse{
+	_ = response.JSON(w, http.StatusOK, dto.AuctionResponse{
 		ID:        output.ID,
 		ListingID: output.ListingID,
 		State:     output.State,
 		StartTime: output.StartTime,
 		EndTime:   output.EndTime,
-	}), nil)
+	}, nil)
 }
 
 func (h *AuctionHandler) PlaceBid(w http.ResponseWriter, r *http.Request) {
@@ -240,7 +240,7 @@ func (h *AuctionHandler) PlaceBid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = response.JSON(w, http.StatusNoContent, nil, nil)
+	response.NoContent(w)
 }
 
 func (h *AuctionHandler) WebSocket(w http.ResponseWriter, r *http.Request) {

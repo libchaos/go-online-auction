@@ -31,10 +31,13 @@ func Error(w http.ResponseWriter, err error) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(rError.Status)
-	_ = json.NewEncoder(w).Encode(rError)
+	_ = json.NewEncoder(w).Encode(Envelope{
+		"error": rError,
+	})
 }
 
-func JSON(w http.ResponseWriter, status int, envelope Envelope, headers http.Header) error {
+func JSON[T any](w http.ResponseWriter, status int, data T, headers http.Header) error {
+	envelope := NewEnvelope(data)
 	js, err := json.MarshalIndent(envelope, "", "\t")
 	if err != nil {
 		return err
@@ -49,4 +52,8 @@ func JSON(w http.ResponseWriter, status int, envelope Envelope, headers http.Hea
 	_, _ = w.Write(js)
 
 	return nil
+}
+
+func NoContent(w http.ResponseWriter) {
+	w.WriteHeader(http.StatusNoContent)
 }
