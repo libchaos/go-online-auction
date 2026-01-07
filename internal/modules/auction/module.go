@@ -90,14 +90,18 @@ func registerLifecycle(
 ) {
 	router.RegisterRoutes(server, auctionHandler)
 
+	// Create a context for the hub that lives throughout the application lifecycle
+	hubCtx, hubCancel := context.WithCancel(context.Background())
+
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
 			logger.Info().Msg("starting websocket hub")
-			go hub.Run(ctx)
+			go hub.Run(hubCtx)
 			return nil
 		},
 		OnStop: func(_ context.Context) error {
 			logger.Info().Msg("stopping websocket hub")
+			hubCancel() // Cancel the hub context
 			return hub.Shutdown()
 		},
 	})
