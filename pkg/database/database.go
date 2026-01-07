@@ -17,12 +17,18 @@ import (
 const defaultPingTimeout = 5 * time.Second
 
 // OpenConnection creates and returns a new pgxpool connection pool
-func OpenConnection(cfg Config) *pgxpool.Pool {
-	dsn := generatePgxDatabaseDSN(cfg)
+func OpenConnection(cfg Config) (*pgxpool.Pool, error) {
+	if err := validateConfig(cfg); err != nil {
+		return nil, fmt.Errorf("invalid database configuration: %w", err)
+	}
+	dsn, err := generatePgxDatabaseDSN(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate database DSN: %w", err)
+	}
 
 	poolConfig, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
-		panic(fmt.Errorf("failed to parse database config: %w", err))
+		return nil, fmt.Errorf("failed to parse database config: %w", err)
 	}
 
 	// Set connection pool settings
@@ -45,7 +51,7 @@ func OpenConnection(cfg Config) *pgxpool.Pool {
 	// Create the connection pool
 	pool, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
 	if err != nil {
-		panic(fmt.Errorf("failed to create connection pool: %w", err))
+		return nil, fmt.Errorf("failed to create connection pool: %w", err)
 	}
 
 	// Verify the connection
@@ -53,20 +59,20 @@ func OpenConnection(cfg Config) *pgxpool.Pool {
 	defer cancel()
 
 	if pingErr := pool.Ping(ctx); pingErr != nil {
-		panic(fmt.Errorf("failed to ping database: %w", pingErr))
+		return nil, fmt.Errorf("failed to ping database: %w", pingErr)
 	}
 
-	return pool
+	return pool, nil
 }
 
-func generatePgxDatabaseDSN(cfg Config) string {
+func generatePgxDatabaseDSN(cfg Config) (string, error) {
 	sslMode := "require"
 	if !cfg.SSLMode {
 		sslMode = "disable"
 	}
 
 	if cfg.Port > math.MaxInt {
-		panic(fmt.Sprintf("port value %d exceeds maximum int value", cfg.Port))
+		return "", fmt.Errorf("port value %d exceeds maximum int value", cfg.Port)
 	}
 
 	// Build DSN with connection pool settings
@@ -85,13 +91,13 @@ func generatePgxDatabaseDSN(cfg Config) string {
 		dsn += "&default_query_exec_mode=cache_statement"
 	}
 
-	return dsn
+	return dsn, nil
 }
 
 // GeneratePostgresDatabaseDSN generates a standard PostgreSQL DSN for migrations
-func GeneratePostgresDatabaseDSN(cfg Config) string {
+func GeneratePostgresDatabaseDSN(cfg Config) (string, error) {
 	if cfg.Port > math.MaxInt {
-		panic(fmt.Sprintf("port value %d exceeds maximum int value", cfg.Port))
+		return "", fmt.Errorf("port value %d exceeds maximum int value", cfg.Port)
 	}
 	hostPort := net.JoinHostPort(cfg.Host, strconv.Itoa(int(cfg.Port)))
 	return fmt.Sprintf(
@@ -100,7 +106,7 @@ func GeneratePostgresDatabaseDSN(cfg Config) string {
 		cfg.Password,
 		hostPort,
 		cfg.Name,
-	)
+	), nil
 }
 
 // pgxLogger adapts slog.Logger to pgx's Logger interface
@@ -146,4 +152,20 @@ func mapLogLevel(level LogLevel) tracelog.LogLevel {
 	default:
 		return tracelog.LogLevelNone
 	}
+}
+
+func validateConfig(cfg Config) error {
+	if cfg.Host == "" {
+		return fmt.Errorf("database host is required")
+	}
+	if cfg.Port <= 0 || cfg.Port > 65535 {
+		return fmt.Errorf("database port must be between 1 and 65535")
+	}
+	if cfg.User == "" {
+		return fmt.Errorf("database user is required")
+	}
+	if cfg.Name == "" {
+		return fmt.Errorf("database name is required")
+	}
+	return nil
 }

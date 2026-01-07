@@ -6,8 +6,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func New(cfg config.Config) *pgxpool.Pool {
-	return database.OpenConnection(database.Config{
+func New(cfg config.Config) (*pgxpool.Pool, error) {
+	dbConfig := database.Config{
 		Host:               cfg.DB.Host,
 		Port:               cfg.DB.Port,
 		User:               cfg.DB.User,
@@ -18,5 +18,6 @@ func New(cfg config.Config) *pgxpool.Pool {
 		SSLMode:            cfg.DB.SSLMode,
 		PrepareSTMT:        cfg.DB.PrepareSTMT,
 		EnableLogs:         cfg.DB.EnableLogs,
-	})
+	}
+	return database.OpenConnection(dbConfig)
 }
