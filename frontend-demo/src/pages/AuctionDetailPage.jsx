@@ -31,8 +31,8 @@ function AuctionDetailPage() {
   const fetchAuctionData = async () => {
     try {
       const response = await getAuctionById(id);
-      setAuction(response.data.auction);
-      setBids(response.data.bids || []);
+      setAuction(response.data.data.auction);
+      setBids(response.data.data.bids || []);
     } catch (error) {
       console.error('Failed to fetch auction:', error);
       // Error toast is handled by interceptor

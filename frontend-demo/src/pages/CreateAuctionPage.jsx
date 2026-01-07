@@ -63,7 +63,7 @@ function CreateAuctionPage() {
         end_time: endTimeISO,
       });
 
-      const createdAuction = response.data;
+      const createdAuction = response.data.data;
       toast.success(`Auction #${createdAuction.id} created successfully!`);
       
       // Navigate to auction detail page

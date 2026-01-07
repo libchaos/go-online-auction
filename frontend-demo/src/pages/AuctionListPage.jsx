@@ -18,13 +18,13 @@ function AuctionListPage() {
   const stateFilter = searchParams.get('state') || '';
   const limit = parseInt(searchParams.get('limit') || '10', 10);
   const currentPage = parseInt(searchParams.get('page') || '1', 10);
-  const offset = (currentPage - 1) * limit;
 
   // Fetch auctions on mount and when filters change
   useEffect(() => {
     const fetchAuctions = async () => {
       setLoading(true);
       try {
+        const offset = (currentPage - 1) * limit;
         const params = {
           limit,
           offset,
@@ -36,8 +36,8 @@ function AuctionListPage() {
         }
 
         const response = await getAuctions(params);
-        setAuctions(response.data.auctions || []);
-        setTotalCount(response.data.total || 0);
+        setAuctions(response.data.data.auctions || []);
+        setTotalCount(response.data.data.total_count || 0);
       } catch (error) {
         console.error('Failed to fetch auctions:', error);
         // Error toast is handled by interceptor
@@ -47,7 +47,7 @@ function AuctionListPage() {
     };
 
     fetchAuctions();
-  }, [stateFilter, limit, offset]);
+  }, [stateFilter, limit, currentPage]);
 
   const handleStateFilterChange = (e) => {
     const newState = e.target.value;
