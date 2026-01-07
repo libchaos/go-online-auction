@@ -242,20 +242,3 @@ func (h *AuctionHandler) PlaceBid(w http.ResponseWriter, r *http.Request) {
 
 	response.NoContent(w)
 }
-
-func (h *AuctionHandler) WebSocket(w http.ResponseWriter, r *http.Request) {
-	idString := request.Param(r, "id")
-	auctionID, err := strconv.ParseUint(idString, 10, 64)
-	if err != nil {
-		response.Error(w, httperrs.ErrInvalidAuctionID)
-		return
-	}
-
-	conn, err := h.httpServer.Upgrader().Upgrade(w, r, nil)
-	if err != nil {
-		h.logger.Error().Err(err).Msg("websocket upgrade failed")
-		return
-	}
-
-	h.websocketHub.RegisterClient(conn, auctionID)
-}

@@ -77,18 +77,27 @@ var Module = fx.Module(
 	fx.Provide(query.NewListAuctionsQuery),
 
 	fx.Provide(handler.NewAuctionHandler),
-
-	fx.Invoke(registerLifecycle),
+	fx.Provide(handler.NewWebsocketHandler),
 )
 
-func registerLifecycle(
+func RegisterAuctionRoutes(
 	lc fx.Lifecycle,
 	hub *websocket.Hub,
 	server *httpserver.Server,
 	auctionHandler *handler.AuctionHandler,
 	logger logger.Logger,
 ) {
-	router.RegisterRoutes(server, auctionHandler)
+	router.RegisterAuctionRoutes(server, auctionHandler)
+}
+
+func RegisterWebsocketRoutes(
+	lc fx.Lifecycle,
+	hub *websocket.Hub,
+	server *httpserver.Server,
+	websocketHandler *handler.WebsocketHandler,
+	logger logger.Logger,
+) {
+	router.RegisterWebsocketRoutes(server, websocketHandler)
 
 	// Create a context for the hub that lives throughout the application lifecycle
 	hubCtx, hubCancel := context.WithCancel(context.Background())

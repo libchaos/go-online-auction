@@ -6,7 +6,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-func RegisterRoutes(server *httpserver.Server, auctionHandler *handler.AuctionHandler) {
+func RegisterAuctionRoutes(server *httpserver.Server, auctionHandler *handler.AuctionHandler) {
 	router := server.Router()
 
 	router.Route("/api/v1/auctions", func(r chi.Router) {
@@ -17,6 +17,4 @@ func RegisterRoutes(server *httpserver.Server, auctionHandler *handler.AuctionHa
 		r.Put("/{id}/cancel", auctionHandler.Cancel)
 		r.Post("/{id}/bids", auctionHandler.PlaceBid)
 	})
-
-	router.Get("/ws/v1/auctions/{id}", auctionHandler.WebSocket)
 }
