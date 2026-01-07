@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 
@@ -17,7 +18,7 @@ var dbMigrateCmd = &cobra.Command{
 	Use:   "db:migrate",
 	Short: "Run database migrations",
 	Long:  `Run database migrations. This command will run all the migrations that have not been run yet.`,
-	Run: func(_ *cobra.Command, _ []string) {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		config.Init()
 		cfg := config.GetConfig()
 		dbConfig := database.Config{
@@ -32,7 +33,10 @@ var dbMigrateCmd = &cobra.Command{
 			PrepareSTMT:        cfg.DB.PrepareSTMT,
 			EnableLogs:         cfg.DB.EnableLogs,
 		}
-		dsn := database.GeneratePostgresDatabaseDSN(dbConfig)
+		dsn, err := database.GeneratePostgresDatabaseDSN(dbConfig)
+		if err != nil {
+			return err
+		}
 
 		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 			Level: slog.LevelInfo,
@@ -40,17 +44,15 @@ var dbMigrateCmd = &cobra.Command{
 
 		m, err := migrate.New("file://migrations", dsn)
 		if err != nil {
-			logger.Error("failed to create migrate instance", "err", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to create migrate instance: %w", err)
 		}
 
 		if err = m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
-			logger.Error("failed to run migrations", "err", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to run migrations: %w", err)
 		}
 
 		logger.Info("Migrations executed successfully")
-		os.Exit(0)
+		return nil
 	},
 }
 
