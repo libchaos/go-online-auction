@@ -13,7 +13,25 @@ const apiClient = axios.create({
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    const message = error.response?.data?.message || error.message || 'An error occurred';
+    // Extract error message from different possible structures
+    let message = 'An error occurred';
+    
+    if (error.response?.data) {
+      const data = error.response.data;
+      // Check for nested error object with message (e.g., {"error":{"code":"AUCTION_13","message":"Auction has expired"}})
+      if (data.error?.message) {
+        message = data.error.message;
+      }
+      // Check for direct message property (e.g., {"message":"Error text"})
+      else if (data.message) {
+        message = data.message;
+      }
+    }
+    // Fallback to axios error message
+    else if (error.message) {
+      message = error.message;
+    }
+    
     toast.error(message);
     return Promise.reject(error);
   }

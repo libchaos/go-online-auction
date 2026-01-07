@@ -65,7 +65,7 @@ function EventItem({ event }) {
           </div>
           <div className="text-sm">
             <span className="font-medium">Amount:</span>{' '}
-            {formatCurrency(event.data.amount_in_cents)}
+            {formatCurrency(event.data.amount?.amount_in_cents)}
           </div>
         </div>
       );

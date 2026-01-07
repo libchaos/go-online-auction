@@ -18,6 +18,8 @@ export const createAuctionWebSocket = (auctionId, callbacks = {}) => {
   
   const wsUrl = `${wsBaseUrl}/ws/v1/auctions/${auctionId}`;
   
+  console.log('WebSocket connecting to:', wsUrl);
+  
   const ws = new ReconnectingWebSocket(wsUrl, [], {
     maxRetries: Infinity,
     maxReconnectionDelay: 30000,
@@ -30,11 +32,13 @@ export const createAuctionWebSocket = (auctionId, callbacks = {}) => {
   });
 
   ws.addEventListener('message', (event) => {
+    console.log('WebSocket raw message:', event.data);
     try {
       const data = JSON.parse(event.data);
+      console.log('WebSocket parsed message:', data);
       callbacks.onMessage?.(data);
     } catch (err) {
-      console.error('WebSocket message parse error:', err);
+      console.error('WebSocket message parse error:', err, 'Raw data:', event.data);
       callbacks.onError?.(err);
     }
   });
