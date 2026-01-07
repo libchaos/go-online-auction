@@ -15,7 +15,7 @@ description: create-prd
 
     ## Template Reference
 
-    - Source template: `./templates/prd-template.md`
+    - Source template: `.agent/workflows/templates/prd-template.md`
     - Final file name: `prd.md`
     - Final directory: `./tasks/prd-[feature-name]/` (name in kebab-case)
 

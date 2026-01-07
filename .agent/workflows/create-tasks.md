@@ -40,18 +40,18 @@ The feature you will work on is identified by this slug:
 ### File Locations
 
 - Feature folder: `./tasks/prd-[feature-name]/`
-- Task list template: `./templates/tasks-template.md`
+- Task list template: `.agent/workflows/templates/tasks-template.md`
 - Task list: `./tasks/prd-[feature-name]/tasks.md`
 - Individual task template: `./templates/task-template.md`
 - Individual tasks: `./tasks/prd-[feature-name]/[num]_task.md`
 
 ### Task Summary Format (tasks.md)
 
-- **STRICTLY FOLLOW THE TEMPLATE IN `./templates/tasks-template.md`**
+- **STRICTLY FOLLOW THE TEMPLATE IN `.agent/workflows/templates/tasks-template.md`**
 
 ### Individual Task Format ([num]_task.md)
 
-- **STRICTLY FOLLOW THE TEMPLATE IN `./templates/task-template.md`**
+- **STRICTLY FOLLOW THE TEMPLATE IN `.agent/workflows/templates/task-template.md`**
 
 ## Final Guidelines
 

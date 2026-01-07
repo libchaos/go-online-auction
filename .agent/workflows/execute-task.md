@@ -11,7 +11,7 @@ You are an AI assistant responsible for managing a software development project.
 * PRD: `./tasks/prd-[feature-name]/prd.md`
 * Tech Spec: `./tasks/prd-[feature-name]/techspec.md`
 * Tasks: `./tasks/prd-[feature-name]/tasks.md`
-* Project Rules: `@.cursor/rules`
+* Project Rules: `@.agent/rules`
 
 ## Steps to Execute
 

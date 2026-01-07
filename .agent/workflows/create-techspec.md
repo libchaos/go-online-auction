@@ -16,13 +16,13 @@ description: create techspec
 
     ## Template and Inputs
 
-    - Tech Spec Template: `templates/techspec-template.md`
+    - Tech Spec Template: `.agent/workflows/templates/techspec-template.md`
     - Required PRD: `tasks/prd-[feature-name]/prd.md`
     - Output Document: `tasks/prd-[feature-name]/techspec.md`
 
     ## Prerequisites
 
-    - Review project standards in `@.cursor/rules`
+    - Review project standards in `@.agent/rules`
     - Confirm that the PRD exists at `tasks/prd-[feature-name]/prd.md`
 
     ## Workflow
