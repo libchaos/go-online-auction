@@ -7,13 +7,14 @@ A real-time online auction bidding system built with Go and React, featuring Web
 ## Table of Contents
 
 - [Overview](#overview)
+- [Engineering Challenges & Solutions](#engineering-challenges--solutions)
+- [Architecture Diagrams](#architecture-diagrams)
+- [Project Structure](#project-structure)
 - [Tech Stack](#tech-stack)
 - [Features](#features)
-- [Architecture](#architecture)
-- [Directory Structure](#directory-structure)
 - [Getting Started](#getting-started)
 - [API Endpoints](#api-endpoints)
-- [Frontend Screens](#frontend-screens)
+- [Frontend Demo](#frontend-demo)
 - [Out of Scope](#out-of-scope)
 - [Development](#development)
 
@@ -21,16 +22,106 @@ A real-time online auction bidding system built with Go and React, featuring Web
 
 ## Overview
 
-This project implements a fully functional online auction system with strong consistency guarantees for concurrent bidding scenarios. The backend is built using hexagonal architecture (ports & adapters pattern) with clear separation between domain logic, application orchestration, and infrastructure concerns. The frontend provides a clean, minimalist interface for testing and interacting with the auction system in real-time.
+This project solves the complex engineering challenge of building a concurrent, consistent auction bidding system at scale. The architecture demonstrates advanced backend patterns including hexagonal architecture, CQRS, event-driven design, and optimistic concurrency control to handle high-throughput bidding scenarios while maintaining data integrity.
 
-**Key Highlights:**
-- Real-time bid updates via WebSocket with Redis Pub/Sub
-- CQRS pattern separating read and write operations
-- Optimistic locking for concurrent bid handling
-- Domain-driven design with rich domain models
-- Hexagonal architecture with ports & adapters pattern
+**Engineering Focus:**
+- **Concurrent Bid Handling**: Optimistic locking with database-level consistency guarantees
+- **Event-Driven Architecture**: Redis Pub/Sub enabling horizontal scalability
+- **CQRS Pattern**: Separation of write/read operations for performance and clarity
+- **Hexagonal Architecture**: Ports & adapters pattern for testability and maintainability
+- **Domain-Driven Design**: Rich domain models with enforced business invariants
+- **Comprehensive CI/CD**: Automated testing, linting, security scanning, and nil safety analysis
 
 ---
+
+## Engineering Challenges & Solutions
+
+### 1. Concurrent Bid Handling
+**Challenge**: Multiple users bidding simultaneously on the same auction creates race conditions where:
+- Two bids might read the same "current highest bid" value
+- Both might place bids thinking they're winning
+- Database could accept both, violating business rules
+
+**Solution**: Multi-layered concurrency control
+```go
+// Domain-level validation
+if bid.Amount <= auction.HighestBidAmount {
+    return ErrBidTooLow
+}
+
+// Database-level locking (repository layer)
+SELECT * FROM auctions WHERE id = $1 FOR UPDATE NOWAIT
+
+// Version-based optimistic locking
+UPDATE auctions SET version = version + 1 WHERE id = $1 AND version = $2
+```
+
+**Trade-offs**:
+- `NOWAIT` fails fast under contention → clients retry with exponential backoff
+- Higher lock contention on popular auctions → acceptable for consistency guarantees
+- Alternative considered: Serializable isolation level (rejected due to performance overhead)
+
+### 2. Event Consistency
+**Challenge**: Events must only be published after database transaction commits. Publishing before commit risks:
+- WebSocket clients receiving events for failed transactions
+- Inconsistent state between database and event stream
+
+**Solution**: Unit of Work pattern with post-commit event dispatch
+```go
+func (u *AuctionUnitOfWork) Complete(ctx context.Context) error {
+    if err := u.tx.Commit(ctx); err != nil {
+        return err
+    }
+    // Events only dispatched after successful commit
+    return u.dispatchEvents(ctx)
+}
+```
+
+**Trade-offs**:
+- Events dispatched in-process (not guaranteed delivery) → acceptable for real-time updates
+- For critical events, would implement outbox pattern with separate worker
+
+### 3. Horizontal Scalability
+**Challenge**: Multiple backend instances need to share WebSocket connections and event distribution.
+
+**Solution**: Redis Pub/Sub as event bus
+- Each backend instance subscribes to `auction:{id}:events` channels
+- Commands publish to Redis after transaction commit
+- WebSocket hubs relay to connected clients
+- Enables stateless backend instances behind load balancer
+
+**Trade-offs**:
+- Redis as single point of failure → mitigated with Redis Sentinel/Cluster in production
+- At-most-once delivery semantics → acceptable for real-time notifications
+
+### 4. Testing & Maintainability
+**Challenge**: Complex business logic and infrastructure dependencies make testing difficult.
+
+**Solution**: Hexagonal architecture with dependency inversion
+```go
+// Domain ports (interfaces)
+type AuctionRepository interface {
+    Save(ctx context.Context, auction *model.AuctionModel) error
+    GetByID(ctx context.Context, id int64) (*model.AuctionModel, error)
+}
+
+// Command handlers depend on interfaces, not concrete implementations
+type PlaceBidCommandHandler struct {
+    uowFactory ports.AuctionUnitOfWorkFactory
+}
+
+// Tests use mocks, production uses PostgreSQL
+mockRepo := mocks.NewMockAuctionRepository(t)
+```
+
+**Benefits**:
+- 100% unit test coverage of business logic without database
+- Can test concurrency edge cases with mock implementations
+- Infrastructure changes don't affect domain layer
+
+---
+
+## Architecture Diagrams
 
 ### C4 Model - Level 1: System Context
 ![C4 Model - Level 1 (System Context)](docs/diagram_001.png)
@@ -42,30 +133,89 @@ This project implements a fully functional online auction system with strong con
 ![C4 Model - Level 1 (System Context)](docs/diagram_003.png)
 
 ### 1. Hexagonal Architecture (Ports & Adapters)
-The system follows hexagonal architecture principles to maintain clean separation of concerns:
+The system follows hexagonal architecture principles to achieve testability and technology independence:
 
-- **Domain Layer**: Pure business logic with no external dependencies
-  - Entities: `AuctionModel`, `BidModel`
-  - Value Objects: `MoneyModel`, `AuctionStateEnum`, `BidStatusEnum`
-  - Domain Events: `AuctionStartedEvent`, `BidPlacedEvent`, `AuctionEndedEvent`
-  - Business Rules: Bid validation, state transitions, optimistic locking
+**Domain Layer** (Pure business logic, zero external dependencies)
+- **Aggregates**: `AuctionModel` (root), `BidModel`
+  - Enforce invariants: Cannot place bid on non-active auction
+  - Encapsulate state transitions: Draft → Active → Closed/Cancelled
+  - Generate domain events as side effects of state changes
+- **Value Objects**: `MoneyModel`, `AuctionStateEnum`, `BidStatusEnum`
+  - Immutable, self-validating
+  - Example: `MoneyModel` ensures amounts are non-negative
+- **Domain Events**: `AuctionStartedEvent`, `BidPlacedEvent`, `AuctionEndedEvent`
+  - Captured during command execution
+  - Dispatched only after successful transaction commit
+- **Business Rules**:
+  - New bid must exceed current highest by at least $1
+  - Auctions cannot be started if already active
+  - Bids cannot be placed after auction end time
 
-- **Application Layer**: Use case orchestration
-  - Commands: `CreateAuctionCommand`, `StartAuctionCommand`, `PlaceBidCommand`, `CancelAuctionCommand`, `CloseAuctionCommand`
-  - Queries: `GetAuctionByIDQuery`, `ListAuctionsQuery`
-  - Each handler exposes a single `Execute(ctx, input) (output, error)` method
+**Application Layer** (Use case orchestration)
+- **Commands** (Write operations):
+  ```go
+  type PlaceBidCommandHandler struct {
+      uowFactory ports.AuctionUnitOfWorkFactory
+  }
+  
+  func (h *PlaceBidCommandHandler) Execute(ctx context.Context, cmd PlaceBidCommand) (*BidModel, error) {
+      uow := h.uowFactory.Create()
+      defer uow.Rollback(ctx)
+      
+      // 1. Load auction with lock
+      auction, err := uow.GetAuctionRepository().GetByID(ctx, cmd.AuctionID)
+      // 2. Domain validation
+      bid, err := auction.PlaceBid(cmd.UserID, cmd.Amount)
+      // 3. Persist changes
+      err = uow.GetBidRepository().Save(ctx, bid)
+      err = uow.GetAuctionRepository().Save(ctx, auction)
+      // 4. Commit & dispatch events
+      return bid, uow.Complete(ctx)
+  }
+  ```
+- **Queries** (Read operations):
+  - Direct database reads without business logic
+  - Optimized for presentation layer needs
+  - Return DTOs, not domain models
 
-- **Infrastructure Layer**: External integrations
-  - PostgreSQL repositories implementing domain ports
-  - Redis event dispatcher for Pub/Sub
-  - Chi HTTP handlers and routers
-  - WebSocket hub for real-time connections
+**Infrastructure Layer** (Technology-specific implementations)
+- **Adapters**:
+  - `PostgreSQLAuctionRepository` implements `ports.AuctionRepository`
+  - `RedisEventDispatcher` implements `ports.EventDispatcher`
+  - `ChiAuctionHandler` adapts HTTP to command/query handlers
+- **Benefits**:
+  - Swap PostgreSQL for MySQL without touching domain code
+  - Test with in-memory repository instead of real database
+  - Replace Redis with Kafka without changing event contracts
 
 ### 2. CQRS (Command Query Responsibility Segregation)
-Write operations (commands) are separated from read operations (queries):
-- **Commands** modify state, emit events, and use Unit of Work for transactional consistency
-- **Queries** read data directly from PostgreSQL without triggering side effects
-- Events are dispatched only after successful transaction commit
+Strict separation between write and read operations:
+
+**Commands** (Write model):
+- Load domain aggregates from repository
+- Execute business logic through domain methods
+- Emit domain events
+- Use Unit of Work for transactional consistency
+- Optimistic locking to handle concurrent writes
+- Example: `PlaceBidCommand` → `PlaceBidCommandHandler`
+
+**Queries** (Read model):
+- Direct SQL queries optimized for UI needs
+- No domain model instantiation
+- No state modifications or side effects
+- Can use database views or denormalized tables
+- Example: `ListAuctionsQuery` returns paginated DTOs with total count
+
+**Benefits**:
+- **Performance**: Queries bypass domain layer overhead
+- **Scalability**: Can use read replicas for queries
+- **Clarity**: Clear distinction between state changes and data retrieval
+- **Optimization**: Queries can be optimized independently (indexes, caching)
+
+**Evolution Path**:
+- Current: Shared PostgreSQL database
+- Future: Separate read/write databases with event-driven synchronization
+- Future: Read model as projection from event stream
 
 ### 3. Event-Driven Architecture
 Domain events enable decoupling and real-time features:
@@ -225,9 +375,6 @@ go-online-auction/
 
 ## Tech Stack
 
-<details>
-<summary><strong>Backend</strong></summary>
-
 | Technology | Version | Purpose |
 |------------|---------|---------|
 | **Go** | 1.25.5 | Primary language |
@@ -244,10 +391,7 @@ go-online-auction/
 | **golang-migrate** | v4.19.1 | Database migrations |
 | **Testify** | v1.11.1 | Testing framework |
 
-</details>
-
-<details>
-<summary><strong>Frontend</strong></summary>
+### Frontend
 
 | Technology | Version | Purpose |
 |------------|---------|---------|
@@ -260,21 +404,15 @@ go-online-auction/
 | **react-hot-toast** | 2.6.0 | Notifications |
 | **date-fns** | 4.1.0 | Date formatting |
 
-</details>
-
-<details>
-<summary><strong>Infrastructure</strong></summary>
+### Infrastructure
 
 - **Docker Compose** - Local development environment
 - **PostgreSQL 17.5 Alpine** - Database container
 - **Redis 8 Alpine** - Caching and Pub/Sub container
 
-</details>
-
 ---
 
-<details>
-<summary><strong>Features</strong></summary>
+## Features
 
 ### Auction Management
 - ✅ Create auctions with configurable end times
@@ -302,12 +440,8 @@ go-online-auction/
 - ✅ Filter auctions by state (draft, active, closed, cancelled)
 - ✅ Get auction details with top 10 bids
 - ✅ Total count for pagination
-</details>
 
----
-
-<details>
-<summary><strong>Frontend Structure</strong></summary>
+### Frontend Structure
 
 ```
 frontend-demo/
@@ -351,28 +485,22 @@ frontend-demo/
 └── README.md                             # Setup instructions
 ```
 
-</details>
-
 ---
 
 ## Getting Started
 
-<details>
-<summary><strong>Prerequisites</strong></summary>
+### Prerequisites
 
 - **Go** 1.25.5 or later
 - **Node.js** 18+ and npm
 - **Docker** and Docker Compose
 - **Make** (optional, for convenience commands)
 
-</details>
-
-<details>
-<summary><strong>Installation</strong></summary>
+### Installation
 
 ### 1. Clone the repository
 ```bash
-git clone <repository-url>
+git clone https://github.com/cristiano-pacheco/go-online-auction
 cd go-online-auction
 ```
 
@@ -385,19 +513,22 @@ This starts:
 - PostgreSQL on `localhost:5432`
 - Redis on `localhost:6379`
 
-### 3. Run database migrations
+### 3. Make a copy of .env
+```
+cp .env.example .env
+```
+
+### 4. Run database migrations
 ```bash
 make migrate
 # or
 go run ./main.go db:migrate
 ```
 
-### 4. Start the backend server
+### 5. Start the backend server
 ```bash
 # Run all modules (HTTP + WebSocket)
 make run
-# or
-go run ./main.go all
 
 # Or run separately:
 # Auction HTTP API
@@ -407,21 +538,19 @@ go run ./main.go auction
 go run ./main.go websocket
 ```
 
-Backend runs on `http://localhost:8080`
+Backend runs on `http://localhost:9000`
 
 ### 5. Start the frontend development server
 ```bash
 cd frontend-demo
+cp .env.example .env
 npm install
-npm run dev
+npm run dev -- --host
 ```
 
 Frontend runs on `http://localhost:5173`
 
-</details>
-
-<details>
-<summary><strong>Configuration</strong></summary>
+### Configuration
 
 Backend configuration via environment variables or `.env` file (see [.env.example](.env.example) for a full list of available variables):
 
@@ -452,17 +581,13 @@ Frontend configuration in `frontend-demo/.env`:
 
 ```env
 VITE_API_BASE_URL=http://localhost:8080/api/v1
-VITE_WS_BASE_URL=ws://localhost:8080/ws/v1
 ```
-
-</details>
 
 ---
 
 ## API Endpoints
 
-<details>
-<summary><strong>Auction Endpoints</strong></summary>
+### Auction Endpoints
 
 ### Create Auction
 ```http
@@ -567,10 +692,7 @@ Response: 200 OK
 
 Transitions auction from `draft` or `active` to `cancelled` state.
 
-</details>
-
-<details>
-<summary><strong>Bid Endpoints</strong></summary>
+### Bid Endpoints
 
 ### Place Bid
 ```http
@@ -593,10 +715,7 @@ Response: 201 Created
 
 **Note**: User ID is auto-generated for demo purposes. In production, this would come from authentication.
 
-</details>
-
-<details>
-<summary><strong>WebSocket Endpoint</strong></summary>
+### WebSocket Endpoint
 
 ### Subscribe to Auction Events
 ```
@@ -648,10 +767,7 @@ ws://localhost:8080/ws/v1/auctions/:id
 }
 ```
 
-</details>
-
-<details>
-<summary><strong>Error Responses</strong></summary>
+### Error Responses
 
 All errors follow a consistent format:
 
@@ -679,110 +795,33 @@ All errors follow a consistent format:
 - `CONCURRENCY_CONFLICT` - Optimistic lock failure (retry)
 - `INVALID_AUCTION_ID` - Invalid auction ID format
 
-</details>
-
 ---
 
-## Frontend Screens
+## Frontend Demo
 
-<details>
-<summary><strong>1. Auction List Page (Route: `/`)</strong></summary>
+A minimal React SPA for testing and demonstrating the backend APIs and WebSocket functionality.
 
-**Features:**
-- Responsive grid layout (1 column mobile, 2-3 columns desktop)
-- State filter dropdown (All, Draft, Active, Closed, Cancelled)
-- Pagination controls with configurable page size
-- Color-coded state badges
-- Click to navigate to auction details
+**Tech Stack**: React 19, Vite, TailwindCSS, Axios, React Router
 
-**Components Used:**
-- `AuctionCard` - Individual auction cards
-- `StateBadge` - Color-coded state indicators
-- `Pagination` - Page navigation controls
+**Setup**: See [frontend-demo/README.md](frontend-demo/README.md) for installation instructions.
 
-**API Integration:**
-- `GET /api/v1/auctions?state={state}&limit={n}&offset={n}`
+### Screens
 
-</details>
+**Auction List** - Browse auctions with state filtering and pagination
 
-<details>
-<summary><strong>2. Create Auction Page (Route: `/create`)</strong></summary>
+![Auction List](docs/list.png)
 
-**Features:**
-- Form with two fields: Listing ID and End Time
-- Client-side validation
-- Datetime picker for end time (must be future date)
-- Success toast notification
-- Auto-redirect to auction detail page on success
+**Create Auction** - Simple form to create new auctions
 
-**API Integration:**
-- `POST /api/v1/auctions`
+![Create Auction](docs/create.png)
 
-</details>
+**Place Bid** - Real-time bidding with state management
 
-<details>
-<summary><strong>3. Auction Detail Page (Route: `/auctions/:id`)</strong></summary>
+![Place Bid](docs/placebid.gif)
 
-**Features:**
-- Display auction metadata (ID, listing, state, times, highest bid)
-- Countdown timer for active auctions
-- Bid history list (top 10 bids, newest first)
-- State-dependent action buttons:
-  - "Start Auction" (draft state only)
-  - "Cancel Auction" (draft or active state)
-  - "Place Bid" form (active state only)
-- Link to WebSocket subscription page
-- Auto-refresh after state changes
+**WebSocket Events** - Live event subscription for testing
 
-**Components Used:**
-- `StateBadge` - State indicator
-- `BidList` - Bid history table
-
-**API Integration:**
-- `GET /api/v1/auctions/:id`
-- `PUT /api/v1/auctions/:id/start`
-- `PUT /api/v1/auctions/:id/cancel`
-- `POST /api/v1/auctions/:id/bids`
-
-</details>
-
-<details>
-<summary><strong>4. WebSocket Subscription Page (Route: `/auctions/:id/subscribe`)</strong></summary>
-
-**Features:**
-- Real-time event feed (newest at top)
-- Connection status indicator (Connected, Disconnected, Connecting)
-- Formatted event messages with emoji indicators:
-  - 💰 Bid Placed
-  - 🚀 Auction Started
-  - 🏁 Auction Ended
-- Collapsible raw JSON payload for debugging
-- Event counter
-- Manual reconnect button
-- Clear event log button
-- Auto-reconnect with exponential backoff
-
-**Components Used:**
-- `EventItem` - Individual event display
-
-**WebSocket Integration:**
-- `ws://localhost:8080/ws/v1/auctions/:id`
-
-</details>
-
-<details>
-<summary><strong>Navigation</strong></summary>
-
-The app uses React Router with a persistent navigation header:
-
-**Header Links:**
-- "Auction Demo" logo - Home link
-- "Auctions" - List page
-- "Create Auction" - Creation form
-
-All pages are mobile-responsive with touch-friendly controls.
-
-</details>
+![WebSocket Events](docs/realtime.gif)
 
 ---
 
@@ -790,8 +829,7 @@ All pages are mobile-responsive with touch-friendly controls.
 
 The following features are explicitly **not implemented** in the current version:
 
-<details>
-<summary><strong>Authentication & Authorization</strong></summary>
+### Authentication & Authorization
 
 - User registration and login
 - JWT or session-based authentication
@@ -801,10 +839,7 @@ The following features are explicitly **not implemented** in the current version
 
 **Current Behavior:** User IDs are randomly generated for demo purposes
 
-</details>
-
-<details>
-<summary><strong>Payment Processing</strong></summary>
+### Payment Processing
 
 - Payment gateway integration (Stripe, PayPal, etc.)
 - Order fulfillment
@@ -812,10 +847,7 @@ The following features are explicitly **not implemented** in the current version
 - Refund processing
 - Transaction history
 
-</details>
-
-<details>
-<summary><strong>Advanced Auction Features</strong></summary>
+### Advanced Auction Features
 
 - Minimum bid increments
 - Reserve prices (minimum price to sell)
@@ -827,10 +859,7 @@ The following features are explicitly **not implemented** in the current version
 - Recurring auctions
 - Dutch auctions (descending price)
 
-</details>
-
-<details>
-<summary><strong>Notification System</strong></summary>
+### Notification System
 
 - Email notifications
 - SMS notifications
@@ -840,10 +869,7 @@ The following features are explicitly **not implemented** in the current version
 
 **Current Behavior:** Events are only available via WebSocket subscription
 
-</details>
-
-<details>
-<summary><strong>Advanced Querying</strong></summary>
+### Advanced Querying
 
 - Full-text search
 - Advanced filtering (price range, category, location)
@@ -851,10 +877,7 @@ The following features are explicitly **not implemented** in the current version
 - Saved searches
 - Auction recommendations
 
-</details>
-
-<details>
-<summary><strong>Caching & Performance</strong></summary>
+### Caching & Performance
 
 - Redis caching for read operations
 - CQRS read models/projections
@@ -862,10 +885,7 @@ The following features are explicitly **not implemented** in the current version
 - Image optimization
 - Database query caching
 
-</details>
-
-<details>
-<summary><strong>Monitoring & Observability</strong></summary>
+### Monitoring & Observability
 
 - Metrics instrumentation (Prometheus)
 - Distributed tracing (Jaeger, OpenTelemetry)
@@ -873,10 +893,7 @@ The following features are explicitly **not implemented** in the current version
 - Error tracking (Sentry)
 - Custom dashboards
 
-</details>
-
-<details>
-<summary><strong>Event Sourcing</strong></summary>
+### Event Sourcing
 
 - Event store persistence
 - Event replay
@@ -884,10 +901,7 @@ The following features are explicitly **not implemented** in the current version
 - Event versioning
 - Temporal queries
 
-</details>
-
-<details>
-<summary><strong>Additional Features</strong></summary>
+### Additional Features
 
 - Listing management (create, edit, delete listings)
 - User management beyond basic entity identification
@@ -904,29 +918,70 @@ The following features are explicitly **not implemented** in the current version
 - Internationalization (i18n)
 - Multiple currency support
 
-</details>
-
 ---
 
 ## Development
 
-<details>
-<summary><strong>Continuous Integration</strong></summary>
+### Continuous Integration & Code Quality
 
-The project includes automated CI checks that run on every push and pull request via GitHub Actions:
+The project enforces strict code quality gates via GitHub Actions CI pipeline that runs on every push and pull request:
 
 **CI Jobs:**
-- 🧪 **Unit Tests** - Runs the full test suite (`go test ./...`)
-- 🔍 **Linting** - Static code analysis with golangci-lint
-- 🔒 **Security Scan** - Vulnerability checking with govulncheck
-- 🛡️ **Nil Safety** - Nil pointer analysis with nilaway
 
-All checks must pass before code can be merged to ensure code quality and reliability.
+**1. Unit Tests** (`go test ./...`)
+- Runs entire test suite with race detector enabled
+- Generates coverage reports
+- Tests use mocks for external dependencies (database, Redis)
+- Focus on domain logic and command/query handlers
+- Example test coverage:
+  - Domain models: Business rule validation
+  - Command handlers: Success and error paths
+  - Concurrency scenarios: Optimistic lock failures
 
-</details>
+**2. Linting** (`golangci-lint`)
+- Runs 40+ linters including:
+  - `errcheck`: Ensures all errors are checked
+  - `govet`: Detects suspicious constructs
+  - `staticcheck`: Advanced static analysis
+  - `gosec`: Security-focused checks
+  - `gocyclo`: Cyclomatic complexity limits
+  - `dupl`: Duplicate code detection
+- Configuration: `.golangci.yml` with custom rules
+- Zero tolerance: All issues must be resolved
 
-<details>
-<summary><strong>Available Make Commands</strong></summary>
+**3. Security Scanning** (`govulncheck`)
+- Scans for known vulnerabilities in dependencies
+- Checks both direct and transitive dependencies
+- Integrated with Go's official vulnerability database
+- Fails build on HIGH/CRITICAL vulnerabilities
+
+**4. Nil Safety Analysis** (`nilaway`)
+- Static analysis tool detecting nil pointer dereferences
+- Catches potential runtime panics at compile time
+- Enforces nil-safe patterns:
+  ```go
+  // Unsafe: nilaway catches this
+  var auction *AuctionModel
+  auction.Start() // potential nil dereference
+  
+  // Safe: explicit nil check
+  if auction != nil {
+      auction.Start()
+  }
+  ```
+
+**Enforcement**:
+- All checks must pass before merge to `main`
+- Branch protection rules prevent bypassing
+- Pre-commit hooks available for local validation: `make lint`
+
+**Quality Metrics**:
+- Test coverage target: >80% for domain layer
+- Zero linting errors policy
+- No known security vulnerabilities
+- No potential nil pointer panics
+
+### Available Make Commands
 
 ```bash
 # Install development tools
@@ -951,10 +1006,7 @@ make vuln-check       # Vulnerability check
 make nilaway          # Nil pointer analysis
 ```
 
-</details>
-
-<details>
-<summary><strong>Running Tests</strong></summary>
+### Running Tests
 
 ```bash
 # Backend tests
@@ -968,10 +1020,7 @@ cd frontend-demo
 npm run lint
 ```
 
-</details>
-
-<details>
-<summary><strong>Database Migrations</strong></summary>
+### Database Migrations
 
 Migrations are located in `migrations/` directory:
 
@@ -987,10 +1036,7 @@ migrate -path migrations -database "postgresql://postgres:postgres@localhost:543
 - `000001_create_auctions_table.up.sql` - Creates auctions table
 - `000002_create_bids_table.up.sql` - Creates bids table
 
-</details>
-
-<details>
-<summary><strong>Generating Mocks</strong></summary>
+### Generating Mocks
 
 Mocks are used for testing:
 
@@ -1001,10 +1047,7 @@ mockery --all --dir=internal/modules/auction/ports --output=tests/mocks
 
 Existing mocks are located in `tests/mocks/`
 
-</details>
-
-<details>
-<summary><strong>Frontend Development</strong></summary>
+### Frontend Development
 
 ```bash
 cd frontend-demo
@@ -1031,10 +1074,7 @@ VITE_API_BASE_URL=http://localhost:8080/api/v1
 VITE_WS_BASE_URL=ws://localhost:8080/ws/v1
 ```
 
-</details>
-
-<details>
-<summary><strong>Project Commands</strong></summary>
+### Project Commands
 
 The project uses Cobra CLI with the following commands:
 
@@ -1055,10 +1095,7 @@ go run ./main.go db:migrate
 go run ./main.go --help
 ```
 
-</details>
-
-<details>
-<summary><strong>Docker Compose Services</strong></summary>
+### Docker Compose Services
 
 ```bash
 # Start all services
@@ -1077,8 +1114,6 @@ docker-compose down -v
 **Services:**
 - `postgres` - PostgreSQL database on port 5432
 - `redis` - Redis server on port 6379
-
-</details>
 
 ---
 
