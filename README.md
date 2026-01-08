@@ -101,93 +101,7 @@ Coordinates multi-repository operations within a single transaction:
 - **Error boundaries** - Graceful handling of runtime errors
 - **Loading states** - Visual feedback during all async operations
 
-## Tech Stack
-
-<details>
-<summary><strong>Backend</strong></summary>
-
-| Technology | Version | Purpose |
-|------------|---------|---------|
-| **Go** | 1.25.5 | Primary language |
-| **Chi** | v5.2.3 | HTTP router |
-| **PostgreSQL** | 17.5 | Primary database |
-| **Redis** | 8 | Pub/Sub for events |
-| **pgx** | v5.7.4 | PostgreSQL driver |
-| **go-redis** | v9.17.2 | Redis client |
-| **Gorilla WebSocket** | v1.5.3 | WebSocket support |
-| **Cobra** | v1.10.2 | CLI framework |
-| **Viper** | v1.21.0 | Configuration |
-| **Zerolog** | v1.34.0 | Structured logging |
-| **Uber Fx** | v1.24.0 | Dependency injection |
-| **golang-migrate** | v4.19.1 | Database migrations |
-| **Testify** | v1.11.1 | Testing framework |
-
-</details>
-
-<details>
-<summary><strong>Frontend</strong></summary>
-
-| Technology | Version | Purpose |
-|------------|---------|---------|
-| **React** | 19.2.0 | UI framework |
-| **Vite** | 7.2.4 | Build tool |
-| **React Router** | 7.11.0 | Client-side routing |
-| **TailwindCSS** | 4.1.18 | Styling |
-| **Axios** | 1.13.2 | HTTP client |
-| **reconnecting-websocket** | 4.4.0 | WebSocket client |
-| **react-hot-toast** | 2.6.0 | Notifications |
-| **date-fns** | 4.1.0 | Date formatting |
-
-</details>
-
-<details>
-<summary><strong>Infrastructure</strong></summary>
-
-- **Docker Compose** - Local development environment
-- **PostgreSQL 17.5 Alpine** - Database container
-- **Redis 8 Alpine** - Caching and Pub/Sub container
-
-</details>
-
----
-
-<details>
-<summary><strong>Features</strong></summary>
-
-### Auction Management
-- ✅ Create auctions with configurable end times
-- ✅ Start auctions (Draft → Active state transition)
-- ✅ Cancel auctions (Draft/Active → Cancelled)
-- ✅ Automatic auction closure upon end time
-- ✅ State machine validation (Draft, Active, Closed, Cancelled)
-
-### Bidding System
-- ✅ Place bids on active auctions
-- ✅ Real-time bid validation (must exceed current highest bid)
-- ✅ Optimistic locking for concurrent bids
-- ✅ Bid history tracking with status (Accepted, Rejected, Superseded)
-- ✅ Highest bid amount denormalization for performance
-
-### Real-Time Updates
-- ✅ WebSocket connections per auction
-- ✅ Live bid placement notifications
-- ✅ Auction state change events (started, ended)
-- ✅ Redis Pub/Sub for horizontal scalability
-- ✅ Automatic reconnection with exponential backoff
-
-### Query Features
-- ✅ List auctions with pagination (limit/offset)
-- ✅ Filter auctions by state (draft, active, closed, cancelled)
-- ✅ Get auction details with top 10 bids
-- ✅ Total count for pagination
-</details>
-
----
-
-## Directory Structure
-
-<details>
-<summary><strong>Backend Structure</strong></summary>
+## Project Structure
 
 ```
 go-online-auction/
@@ -309,7 +223,88 @@ go-online-auction/
 └── go.mod                                 # Go dependencies
 ```
 
+## Tech Stack
+
+<details>
+<summary><strong>Backend</strong></summary>
+
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| **Go** | 1.25.5 | Primary language |
+| **Chi** | v5.2.3 | HTTP router |
+| **PostgreSQL** | 17.5 | Primary database |
+| **Redis** | 8 | Pub/Sub for events |
+| **pgx** | v5.7.4 | PostgreSQL driver |
+| **go-redis** | v9.17.2 | Redis client |
+| **Gorilla WebSocket** | v1.5.3 | WebSocket support |
+| **Cobra** | v1.10.2 | CLI framework |
+| **Viper** | v1.21.0 | Configuration |
+| **Zerolog** | v1.34.0 | Structured logging |
+| **Uber Fx** | v1.24.0 | Dependency injection |
+| **golang-migrate** | v4.19.1 | Database migrations |
+| **Testify** | v1.11.1 | Testing framework |
+
 </details>
+
+<details>
+<summary><strong>Frontend</strong></summary>
+
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| **React** | 19.2.0 | UI framework |
+| **Vite** | 7.2.4 | Build tool |
+| **React Router** | 7.11.0 | Client-side routing |
+| **TailwindCSS** | 4.1.18 | Styling |
+| **Axios** | 1.13.2 | HTTP client |
+| **reconnecting-websocket** | 4.4.0 | WebSocket client |
+| **react-hot-toast** | 2.6.0 | Notifications |
+| **date-fns** | 4.1.0 | Date formatting |
+
+</details>
+
+<details>
+<summary><strong>Infrastructure</strong></summary>
+
+- **Docker Compose** - Local development environment
+- **PostgreSQL 17.5 Alpine** - Database container
+- **Redis 8 Alpine** - Caching and Pub/Sub container
+
+</details>
+
+---
+
+<details>
+<summary><strong>Features</strong></summary>
+
+### Auction Management
+- ✅ Create auctions with configurable end times
+- ✅ Start auctions (Draft → Active state transition)
+- ✅ Cancel auctions (Draft/Active → Cancelled)
+- ✅ Automatic auction closure upon end time
+- ✅ State machine validation (Draft, Active, Closed, Cancelled)
+
+### Bidding System
+- ✅ Place bids on active auctions
+- ✅ Real-time bid validation (must exceed current highest bid)
+- ✅ Optimistic locking for concurrent bids
+- ✅ Bid history tracking with status (Accepted, Rejected, Superseded)
+- ✅ Highest bid amount denormalization for performance
+
+### Real-Time Updates
+- ✅ WebSocket connections per auction
+- ✅ Live bid placement notifications
+- ✅ Auction state change events (started, ended)
+- ✅ Redis Pub/Sub for horizontal scalability
+- ✅ Automatic reconnection with exponential backoff
+
+### Query Features
+- ✅ List auctions with pagination (limit/offset)
+- ✅ Filter auctions by state (draft, active, closed, cancelled)
+- ✅ Get auction details with top 10 bids
+- ✅ Total count for pagination
+</details>
+
+---
 
 <details>
 <summary><strong>Frontend Structure</strong></summary>
@@ -428,7 +423,7 @@ Frontend runs on `http://localhost:5173`
 <details>
 <summary><strong>Configuration</strong></summary>
 
-Backend configuration via environment variables or `.env` file:
+Backend configuration via environment variables or `.env` file (see [.env.example](.env.example) for a full list of available variables):
 
 ```env
 # Database
@@ -918,7 +913,7 @@ The following features are explicitly **not implemented** in the current version
 <details>
 <summary><strong>Continuous Integration</strong></summary>
 
-The project includes automated CI checks that run on every push and pull request:
+The project includes automated CI checks that run on every push and pull request via GitHub Actions:
 
 **CI Jobs:**
 - 🧪 **Unit Tests** - Runs the full test suite (`go test ./...`)
