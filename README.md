@@ -48,15 +48,15 @@ This project solves the complex engineering challenge of building a concurrent, 
 if bid.Amount <= auction.HighestBidAmount {
     return ErrBidTooLow
 }
+```
 
+```sql
 // Layer 2: Database-level locking (repository layer)
 SELECT * FROM auctions WHERE id = $1 FOR UPDATE NOWAIT
 
 // Layer 3: Version-based optimistic locking
 UPDATE auctions SET version = version + 1 WHERE id = $1 AND version = $2
-```
 
-```sql
 -- Layer 4: Database trigger as final safety net (fallback)
 -- Enforces business rule even if application logic is bypassed
 CREATE TRIGGER enforce_higher_bids
