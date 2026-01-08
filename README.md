@@ -916,6 +916,21 @@ The following features are explicitly **not implemented** in the current version
 ## Development
 
 <details>
+<summary><strong>Continuous Integration</strong></summary>
+
+The project includes automated CI checks that run on every push and pull request:
+
+**CI Jobs:**
+- 🧪 **Unit Tests** - Runs the full test suite (`go test ./...`)
+- 🔍 **Linting** - Static code analysis with golangci-lint
+- 🔒 **Security Scan** - Vulnerability checking with govulncheck
+- 🛡️ **Nil Safety** - Nil pointer analysis with nilaway
+
+All checks must pass before code can be merged to ensure code quality and reliability.
+
+</details>
+
+<details>
 <summary><strong>Available Make Commands</strong></summary>
 
 ```bash
