@@ -44,21 +44,31 @@ This project solves the complex engineering challenge of building a concurrent, 
 
 **Solution**: Multi-layered concurrency control
 ```go
-// Domain-level validation
+// Layer 1: Domain-level validation
 if bid.Amount <= auction.HighestBidAmount {
     return ErrBidTooLow
 }
 
-// Database-level locking (repository layer)
+// Layer 2: Database-level locking (repository layer)
 SELECT * FROM auctions WHERE id = $1 FOR UPDATE NOWAIT
 
-// Version-based optimistic locking
+// Layer 3: Version-based optimistic locking
 UPDATE auctions SET version = version + 1 WHERE id = $1 AND version = $2
+```
+
+```sql
+-- Layer 4: Database trigger as final safety net (fallback)
+-- Enforces business rule even if application logic is bypassed
+CREATE TRIGGER enforce_higher_bids
+    BEFORE INSERT ON bids
+    FOR EACH ROW
+    EXECUTE FUNCTION check_bid_amount();
 ```
 
 **Trade-offs**:
 - `NOWAIT` fails fast under contention → clients retry with exponential backoff
 - Higher lock contention on popular auctions → acceptable for consistency guarantees
+- Database trigger adds slight overhead but ensures data integrity as fallback
 - Alternative considered: Serializable isolation level (rejected due to performance overhead)
 
 ### 2. Event Consistency
@@ -109,9 +119,6 @@ type AuctionRepository interface {
 type PlaceBidCommandHandler struct {
     uowFactory ports.AuctionUnitOfWorkFactory
 }
-
-// Tests use mocks, production uses PostgreSQL
-mockRepo := mocks.NewMockAuctionRepository(t)
 ```
 
 **Benefits**:
@@ -601,13 +608,15 @@ Content-Type: application/json
 
 Response: 201 Created
 {
-  "id": 1,
-  "listing_id": 1,
-  "state": "draft",
-  "start_time": null,
-  "end_time": "2026-01-15T18:00:00Z",
-  "highest_bid_amount_in_cents": null,
-  "created_at": "2026-01-07T14:30:00Z"
+  "data": {
+    "id": 1,
+    "listing_id": 1,
+    "state": "draft",
+    "start_time": null,
+    "end_time": "2026-01-15T18:00:00Z",
+    "highest_bid_amount_in_cents": null,
+    "created_at": "2026-01-07T14:30:00Z"
+  }
 }
 ```
 
@@ -617,10 +626,12 @@ GET /api/v1/auctions?state=active&limit=25&offset=0
 
 Response: 200 OK
 {
-  "auctions": [...],
-  "total_count": 45,
-  "limit": 25,
-  "offset": 0
+  "data": {
+    "auctions": [...],
+    "total_count": 45,
+    "limit": 25,
+    "offset": 0
+  }
 }
 ```
 
@@ -635,24 +646,26 @@ GET /api/v1/auctions/:id
 
 Response: 200 OK
 {
-  "auction": {
-    "id": 1,
-    "listing_id": 1,
-    "state": "active",
-    "start_time": "2026-01-07T14:30:00Z",
-    "end_time": "2026-01-15T18:00:00Z",
-    "highest_bid_amount_in_cents": 50000,
-    "created_at": "2026-01-07T14:00:00Z"
-  },
-  "bids": [
-    {
-      "id": 5,
-      "auction_id": 1,
-      "user_id": 42,
-      "amount_in_cents": 50000,
-      "created_at": "2026-01-07T15:00:00Z"
-    }
-  ]
+  "data": {
+    "auction": {
+      "id": 1,
+      "listing_id": 1,
+      "state": "active",
+      "start_time": "2026-01-07T14:30:00Z",
+      "end_time": "2026-01-15T18:00:00Z",
+      "highest_bid_amount_in_cents": 50000,
+      "created_at": "2026-01-07T14:00:00Z"
+    },
+    "bids": [
+      {
+        "id": 5,
+        "auction_id": 1,
+        "user_id": 42,
+        "amount_in_cents": 50000,
+        "created_at": "2026-01-07T15:00:00Z"
+      }
+    ]
+  }
 }
 ```
 
@@ -664,12 +677,14 @@ PUT /api/v1/auctions/:id/start
 
 Response: 200 OK
 {
-  "id": 1,
-  "listing_id": 1,
-  "state": "active",
-  "start_time": "2026-01-07T14:30:00Z",
-  "end_time": "2026-01-15T18:00:00Z",
-  "created_at": "2026-01-07T14:00:00Z"
+  "data": {
+    "id": 1,
+    "listing_id": 1,
+    "state": "active",
+    "start_time": "2026-01-07T14:30:00Z",
+    "end_time": "2026-01-15T18:00:00Z",
+    "created_at": "2026-01-07T14:00:00Z"
+  }
 }
 ```
 
@@ -681,12 +696,14 @@ PUT /api/v1/auctions/:id/cancel
 
 Response: 200 OK
 {
-  "id": 1,
-  "listing_id": 1,
-  "state": "cancelled",
-  "start_time": null,
-  "end_time": "2026-01-15T18:00:00Z",
-  "created_at": "2026-01-07T14:00:00Z"
+  "data": {
+    "id": 1,
+    "listing_id": 1,
+    "state": "cancelled",
+    "start_time": null,
+    "end_time": "2026-01-15T18:00:00Z",
+    "created_at": "2026-01-07T14:00:00Z"
+  }
 }
 ```
 
@@ -705,11 +722,13 @@ Content-Type: application/json
 
 Response: 201 Created
 {
-  "id": 6,
-  "auction_id": 1,
-  "user_id": 42,
-  "amount_in_cents": 55000,
-  "created_at": "2026-01-07T15:30:00Z"
+  "data": {
+    "id": 6,
+    "auction_id": 1,
+    "user_id": 42,
+    "amount_in_cents": 55000,
+    "created_at": "2026-01-07T15:30:00Z"
+  }
 }
 ```
 
