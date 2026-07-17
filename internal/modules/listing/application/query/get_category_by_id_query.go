@@ -45,6 +45,8 @@ func (q *GetCategoryByIDQuery) Execute(
 			ID:        category.ID(),
 			Name:      category.Name(),
 			ParentID:  category.ParentID(),
+			Depth:     category.Depth(),
+			Path:      category.Path(),
 			SortOrder: category.SortOrder(),
 			CreatedAt: category.CreatedAt(),
 			UpdatedAt: category.UpdatedAt(),

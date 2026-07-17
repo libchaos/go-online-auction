@@ -39,7 +39,7 @@ func (s *ListCategoriesQueryTestSuite) TestExecute_NoParent_ReturnsRootCategorie
 	// Arrange
 	ctx := context.Background()
 	now := time.Now().UTC()
-	category, _ := model.RestoreCategoryModel(1, "数码", nil, 0, 1, now, now)
+	category, _ := model.RestoreCategoryModel(1, "数码", nil, 0, "", 0, 1, now, now)
 
 	s.categoryRepositoryMock.
 		On("List", mock.Anything, (*uint64)(nil)).
@@ -59,7 +59,7 @@ func (s *ListCategoriesQueryTestSuite) TestExecute_WithParent_ReturnsChildren() 
 	ctx := context.Background()
 	parentID := uint64(1)
 	now := time.Now().UTC()
-	category, _ := model.RestoreCategoryModel(2, "手机", &parentID, 0, 1, now, now)
+	category, _ := model.RestoreCategoryModel(2, "手机", &parentID, 0, "", 0, 1, now, now)
 
 	s.categoryRepositoryMock.
 		On("List", mock.Anything, &parentID).

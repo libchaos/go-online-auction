@@ -18,6 +18,8 @@ type UpdateCategoryCommandOutput struct {
 	ID        uint64
 	Name      string
 	ParentID  *uint64
+	Depth     int32
+	Path      string
 	SortOrder int32
 	UpdatedAt time.Time
 }
@@ -61,6 +63,8 @@ func (c *UpdateCategoryCommand) Execute(
 		ID:        category.ID(),
 		Name:      category.Name(),
 		ParentID:  category.ParentID(),
+		Depth:     category.Depth(),
+		Path:      category.Path(),
 		SortOrder: category.SortOrder(),
 		UpdatedAt: category.UpdatedAt(),
 	}, nil

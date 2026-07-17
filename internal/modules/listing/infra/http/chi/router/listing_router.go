@@ -22,6 +22,8 @@ func RegisterListingRoutes(
 
 		r.With(middleware.RequireAuth, admin).Post("/", categoryHandler.Create)
 		r.Get("/", categoryHandler.List)
+		r.Get("/tree", categoryHandler.Tree)
+		r.Get("/{id}/tree", categoryHandler.Subtree)
 		r.Get("/{id}", categoryHandler.GetByID)
 		r.With(middleware.RequireAuth, admin).Put("/{id}", categoryHandler.Update)
 		r.With(middleware.RequireAuth, admin).Delete("/{id}", categoryHandler.Delete)

@@ -61,6 +61,8 @@ type Category struct {
 	Version   int64
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	Depth     int32
+	Path      string
 }
 
 type Sku struct {

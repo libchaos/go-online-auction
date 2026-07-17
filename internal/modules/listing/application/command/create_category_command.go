@@ -21,6 +21,8 @@ type CreateCategoryCommandOutput struct {
 	ID        uint64
 	Name      string
 	ParentID  *uint64
+	Depth     int32
+	Path      string
 	SortOrder int32
 	CreatedAt time.Time
 }
@@ -45,13 +47,21 @@ func (c *CreateCategoryCommand) Execute(
 	input CreateCategoryCommandInput,
 ) (CreateCategoryCommandOutput, error) {
 	if input.ParentID != nil {
-		_, err := c.categoryRepository.FindByID(ctx, *input.ParentID)
+		parent, err := c.categoryRepository.FindByID(ctx, *input.ParentID)
 		if err != nil {
 			if errors.Is(err, errs.ErrCategoryNotFound) {
 				return CreateCategoryCommandOutput{}, errs.ErrCategoryParentNotFound
 			}
 			c.logger.Error().Err(err).Uint64("parent_id", *input.ParentID).Msg("failed to find parent category")
 			return CreateCategoryCommandOutput{}, err
+		}
+
+		if parent.Depth()+1 > model.MaxCategoryDepth {
+			c.logger.Error().
+				Uint64("parent_id", *input.ParentID).
+				Int32("parent_depth", parent.Depth()).
+				Msg("category depth exceeded")
+			return CreateCategoryCommandOutput{}, errs.ErrCategoryDepthExceeded
 		}
 	}
 
@@ -71,6 +81,8 @@ func (c *CreateCategoryCommand) Execute(
 		ID:        persisted.ID(),
 		Name:      persisted.Name(),
 		ParentID:  persisted.ParentID(),
+		Depth:     persisted.Depth(),
+		Path:      persisted.Path(),
 		SortOrder: persisted.SortOrder(),
 		CreatedAt: persisted.CreatedAt(),
 	}, nil

@@ -39,7 +39,7 @@ func (s *GetCategoryByIDQueryTestSuite) TestExecute_ValidID_ReturnsCategory() {
 	// Arrange
 	ctx := context.Background()
 	now := time.Now().UTC()
-	category, _ := model.RestoreCategoryModel(1, "数码", nil, 0, 1, now, now)
+	category, _ := model.RestoreCategoryModel(1, "数码", nil, 0, "", 0, 1, now, now)
 
 	s.categoryRepositoryMock.On("FindByID", mock.Anything, uint64(1)).Return(category, nil)
 

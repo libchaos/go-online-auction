@@ -356,6 +356,123 @@ func (_c *MockCategoryRepository_List_Call) RunAndReturn(run func(context.Contex
 	return _c
 }
 
+// ListAll provides a mock function with given fields: ctx
+func (_m *MockCategoryRepository) ListAll(ctx context.Context) ([]model.CategoryModel, error) {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListAll")
+	}
+
+	var r0 []model.CategoryModel
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context) ([]model.CategoryModel, error)); ok {
+		return rf(ctx)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context) []model.CategoryModel); ok {
+		r0 = rf(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]model.CategoryModel)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockCategoryRepository_ListAll_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListAll'
+type MockCategoryRepository_ListAll_Call struct {
+	*mock.Call
+}
+
+// ListAll is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *MockCategoryRepository_Expecter) ListAll(ctx interface{}) *MockCategoryRepository_ListAll_Call {
+	return &MockCategoryRepository_ListAll_Call{Call: _e.mock.On("ListAll", ctx)}
+}
+
+func (_c *MockCategoryRepository_ListAll_Call) Run(run func(ctx context.Context)) *MockCategoryRepository_ListAll_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *MockCategoryRepository_ListAll_Call) Return(_a0 []model.CategoryModel, _a1 error) *MockCategoryRepository_ListAll_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockCategoryRepository_ListAll_Call) RunAndReturn(run func(context.Context) ([]model.CategoryModel, error)) *MockCategoryRepository_ListAll_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListDescendants provides a mock function with given fields: ctx, id
+func (_m *MockCategoryRepository) ListDescendants(ctx context.Context, id uint64) ([]model.CategoryModel, error) {
+	ret := _m.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListDescendants")
+	}
+
+	var r0 []model.CategoryModel
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint64) ([]model.CategoryModel, error)); ok {
+		return rf(ctx, id)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uint64) []model.CategoryModel); ok {
+		r0 = rf(ctx, id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]model.CategoryModel)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uint64) error); ok {
+		r1 = rf(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockCategoryRepository_ListDescendants_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListDescendants'
+type MockCategoryRepository_ListDescendants_Call struct {
+	*mock.Call
+}
+
+// ListDescendants is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id uint64
+func (_e *MockCategoryRepository_Expecter) ListDescendants(ctx interface{}, id interface{}) *MockCategoryRepository_ListDescendants_Call {
+	return &MockCategoryRepository_ListDescendants_Call{Call: _e.mock.On("ListDescendants", ctx, id)}
+}
+
+func (_c *MockCategoryRepository_ListDescendants_Call) Run(run func(ctx context.Context, id uint64)) *MockCategoryRepository_ListDescendants_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uint64))
+	})
+	return _c
+}
+
+func (_c *MockCategoryRepository_ListDescendants_Call) Return(_a0 []model.CategoryModel, _a1 error) *MockCategoryRepository_ListDescendants_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockCategoryRepository_ListDescendants_Call) RunAndReturn(run func(context.Context, uint64) ([]model.CategoryModel, error)) *MockCategoryRepository_ListDescendants_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Update provides a mock function with given fields: ctx, category
 func (_m *MockCategoryRepository) Update(ctx context.Context, category model.CategoryModel) error {
 	ret := _m.Called(ctx, category)

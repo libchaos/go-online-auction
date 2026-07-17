@@ -7,6 +7,7 @@ var (
 	ErrCategoryIDRequired     = errors.New("category id must be greater than zero")
 	ErrCategoryNameRequired   = errors.New("category name is required")
 	ErrCategoryParentNotFound = errors.New("parent category not found")
+	ErrCategoryDepthExceeded  = errors.New("category depth exceeds the maximum allowed levels")
 	ErrCategoryHasChildren    = errors.New("category has child categories and cannot be deleted")
 	ErrCategoryInUse          = errors.New("category is referenced by SPUs and cannot be deleted")
 

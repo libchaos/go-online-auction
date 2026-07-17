@@ -84,6 +84,7 @@ var Module = fx.Module(
 
 	fx.Provide(query.NewListCategoriesQuery),
 	fx.Provide(query.NewGetCategoryByIDQuery),
+	fx.Provide(query.NewGetCategoryTreeQuery),
 	fx.Provide(query.NewListSpusQuery),
 	fx.Provide(query.NewGetSpuByIDQuery),
 	fx.Provide(query.NewGetSkuByIDQuery),

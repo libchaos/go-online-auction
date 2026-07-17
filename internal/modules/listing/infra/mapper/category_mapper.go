@@ -16,6 +16,8 @@ func (m *CategoryMapper) ToDomain(c sqlcgen.Category) (model.CategoryModel, erro
 		uint64(c.ID),
 		c.Name,
 		toNullableUint64(c.ParentID),
+		c.Depth,
+		c.Path,
 		c.SortOrder,
 		uint64(c.Version),
 		c.CreatedAt,

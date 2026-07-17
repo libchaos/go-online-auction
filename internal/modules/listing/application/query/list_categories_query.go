@@ -20,6 +20,8 @@ type CategoryOutput struct {
 	ID        uint64
 	Name      string
 	ParentID  *uint64
+	Depth     int32
+	Path      string
 	SortOrder int32
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -56,6 +58,8 @@ func (q *ListCategoriesQuery) Execute(
 			ID:        category.ID(),
 			Name:      category.Name(),
 			ParentID:  category.ParentID(),
+			Depth:     category.Depth(),
+			Path:      category.Path(),
 			SortOrder: category.SortOrder(),
 			CreatedAt: category.CreatedAt(),
 			UpdatedAt: category.UpdatedAt(),

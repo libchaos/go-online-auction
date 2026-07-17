@@ -33,7 +33,7 @@ func (s *UpdateCategoryCommandTestSuite) SetupTest() {
 	)
 
 	now := time.Now().UTC()
-	s.mockCategory, _ = model.RestoreCategoryModel(1, "数码", nil, 0, 1, now, now)
+	s.mockCategory, _ = model.RestoreCategoryModel(1, "数码", nil, 0, "", 0, 1, now, now)
 }
 
 func TestUpdateCategoryCommandSuite(t *testing.T) {

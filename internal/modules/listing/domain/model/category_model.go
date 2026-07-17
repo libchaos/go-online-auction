@@ -7,17 +7,24 @@ import (
 	"auction/internal/modules/listing/domain/errs"
 )
 
-// CategoryModel is a node in the category adjacency-list tree; a nil parentID
-// marks a root category.
+// CategoryModel is a node in the category tree; a nil parentID marks a root
+// category. depth is the 0-based level (root = 0) and path is the materialized
+// "/<root>/<child>/<id>" trail used for prefix-based subtree scans.
 type CategoryModel struct {
 	id        uint64
 	name      string
 	parentID  *uint64
+	depth     int32
+	path      string
 	sortOrder int32
 	version   uint64
 	createdAt time.Time
 	updatedAt time.Time
 }
+
+// MaxCategoryDepth is the highest allowed depth value for any category. A root
+// sits at depth 0, so the deepest supported tree has MaxCategoryDepth+1 levels.
+const MaxCategoryDepth = 6
 
 func NewCategoryModel(name string, parentID *uint64, sortOrder int32) (CategoryModel, error) {
 	if err := validateCategoryName(name); err != nil {
@@ -28,6 +35,8 @@ func NewCategoryModel(name string, parentID *uint64, sortOrder int32) (CategoryM
 	return CategoryModel{
 		name:      strings.TrimSpace(name),
 		parentID:  parentID,
+		depth:     0,
+		path:      "",
 		sortOrder: sortOrder,
 		version:   1,
 		createdAt: now,
@@ -39,6 +48,8 @@ func RestoreCategoryModel(
 	id uint64,
 	name string,
 	parentID *uint64,
+	depth int32,
+	path string,
 	sortOrder int32,
 	version uint64,
 	createdAt, updatedAt time.Time,
@@ -55,6 +66,8 @@ func RestoreCategoryModel(
 		id:        id,
 		name:      name,
 		parentID:  parentID,
+		depth:     depth,
+		path:      path,
 		sortOrder: sortOrder,
 		version:   version,
 		createdAt: createdAt,
@@ -72,6 +85,14 @@ func (c *CategoryModel) Name() string {
 
 func (c *CategoryModel) ParentID() *uint64 {
 	return c.parentID
+}
+
+func (c *CategoryModel) Depth() int32 {
+	return c.depth
+}
+
+func (c *CategoryModel) Path() string {
+	return c.path
 }
 
 func (c *CategoryModel) SortOrder() int32 {

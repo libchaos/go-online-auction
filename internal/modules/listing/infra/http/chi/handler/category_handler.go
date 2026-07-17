@@ -18,6 +18,7 @@ type CategoryHandler struct {
 	deleteCategoryCommand *command.DeleteCategoryCommand
 	listCategoriesQuery   *query.ListCategoriesQuery
 	getCategoryByIDQuery  *query.GetCategoryByIDQuery
+	getCategoryTreeQuery  *query.GetCategoryTreeQuery
 }
 
 func NewCategoryHandler(
@@ -26,6 +27,7 @@ func NewCategoryHandler(
 	deleteCategoryCommand *command.DeleteCategoryCommand,
 	listCategoriesQuery *query.ListCategoriesQuery,
 	getCategoryByIDQuery *query.GetCategoryByIDQuery,
+	getCategoryTreeQuery *query.GetCategoryTreeQuery,
 ) *CategoryHandler {
 	return &CategoryHandler{
 		createCategoryCommand: createCategoryCommand,
@@ -33,6 +35,7 @@ func NewCategoryHandler(
 		deleteCategoryCommand: deleteCategoryCommand,
 		listCategoriesQuery:   listCategoriesQuery,
 		getCategoryByIDQuery:  getCategoryByIDQuery,
+		getCategoryTreeQuery:  getCategoryTreeQuery,
 	}
 }
 
@@ -57,6 +60,8 @@ func (h *CategoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 		ID:        output.ID,
 		Name:      output.Name,
 		ParentID:  output.ParentID,
+		Depth:     output.Depth,
+		Path:      output.Path,
 		SortOrder: output.SortOrder,
 		CreatedAt: output.CreatedAt,
 	}, nil)
@@ -87,6 +92,8 @@ func (h *CategoryHandler) List(w http.ResponseWriter, r *http.Request) {
 			ID:        category.ID,
 			Name:      category.Name,
 			ParentID:  category.ParentID,
+			Depth:     category.Depth,
+			Path:      category.Path,
 			SortOrder: category.SortOrder,
 			CreatedAt: category.CreatedAt,
 			UpdatedAt: category.UpdatedAt,
@@ -115,6 +122,8 @@ func (h *CategoryHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		ID:        output.Category.ID,
 		Name:      output.Category.Name,
 		ParentID:  output.Category.ParentID,
+		Depth:     output.Category.Depth,
+		Path:      output.Category.Path,
 		SortOrder: output.Category.SortOrder,
 		CreatedAt: output.Category.CreatedAt,
 		UpdatedAt: output.Category.UpdatedAt,
@@ -148,6 +157,8 @@ func (h *CategoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 		ID:        output.ID,
 		Name:      output.Name,
 		ParentID:  output.ParentID,
+		Depth:     output.Depth,
+		Path:      output.Path,
 		SortOrder: output.SortOrder,
 		UpdatedAt: output.UpdatedAt,
 	}, nil)
@@ -168,6 +179,61 @@ func (h *CategoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *CategoryHandler) Tree(w http.ResponseWriter, r *http.Request) {
+	output, err := h.getCategoryTreeQuery.Execute(r.Context(), query.GetCategoryTreeQueryInput{RootID: nil})
+	if err != nil {
+		response.Error(w, httperrs.MapDomainError(err))
+		return
+	}
+
+	roots := make([]*dto.CategoryTreeNode, 0, len(output.Roots))
+	for _, node := range output.Roots {
+		roots = append(roots, toCategoryTreeNodeDTO(node))
+	}
+
+	_ = response.JSON(w, http.StatusOK, dto.CategoryTreeResponse{Roots: roots}, nil)
+}
+
+func (h *CategoryHandler) Subtree(w http.ResponseWriter, r *http.Request) {
+	categoryID, err := parseIDParam(r)
+	if err != nil {
+		response.Error(w, httperrs.ErrInvalidID)
+		return
+	}
+
+	output, err := h.getCategoryTreeQuery.Execute(r.Context(), query.GetCategoryTreeQueryInput{RootID: &categoryID})
+	if err != nil {
+		response.Error(w, httperrs.MapDomainError(err))
+		return
+	}
+
+	roots := make([]*dto.CategoryTreeNode, 0, len(output.Roots))
+	for _, node := range output.Roots {
+		roots = append(roots, toCategoryTreeNodeDTO(node))
+	}
+
+	_ = response.JSON(w, http.StatusOK, dto.CategoryTreeResponse{Roots: roots}, nil)
+}
+
+func toCategoryTreeNodeDTO(node *query.CategoryTreeNode) *dto.CategoryTreeNode {
+	children := make([]*dto.CategoryTreeNode, 0, len(node.Children))
+	for _, child := range node.Children {
+		children = append(children, toCategoryTreeNodeDTO(child))
+	}
+
+	return &dto.CategoryTreeNode{
+		ID:        node.ID,
+		ParentID:  node.ParentID,
+		Name:      node.Name,
+		Depth:     node.Depth,
+		Path:      node.Path,
+		SortOrder: node.SortOrder,
+		Children:  children,
+		CreatedAt: node.CreatedAt,
+		UpdatedAt: node.UpdatedAt,
+	}
 }
 
 func parseIDParam(r *http.Request) (uint64, error) {

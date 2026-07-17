@@ -871,6 +871,27 @@ ws://localhost:8080/ws/v1/deposits
 ```
 Streams deposit status changes for the authenticated user.
 
+### Category Endpoints (multi-level)
+
+Categories form a materialized-path tree (`depth` + `path` columns). `depth` is the
+0-based level (root = 0); the maximum depth is `MaxCategoryDepth` (currently 6, i.e.
+7 levels). Creating a child under a category already at the max depth returns
+`ERR_CATEGORY_DEPTH_EXCEEDED`.
+
+```http
+POST /api/v1/categories            # admin: create (set { "parent_id": <id> } for nesting)
+GET  /api/v1/categories            # list direct children; ?parent_id=<id> filters, omit for roots
+GET  /api/v1/categories/tree       # full nested category forest (roots + children)
+GET  /api/v1/categories/:id/tree   # subtree rooted at :id (inclusive of :id)
+GET  /api/v1/categories/:id        # single category (includes depth + path)
+PUT  /api/v1/categories/:id        # admin: rename / reorder
+DELETE /api/v1/categories/:id      # admin: rejected if it has children or linked SPUs
+```
+
+Each category response carries `depth` and `path`. The `/tree` endpoints return a
+recursive `roots[].children[]` structure built from `path` prefixes, so the client
+gets the whole multi-level hierarchy in one call.
+
 ### WebSocket Endpoint
 
 ### Subscribe to Auction Events

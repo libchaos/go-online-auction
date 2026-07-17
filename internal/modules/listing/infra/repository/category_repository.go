@@ -32,12 +32,17 @@ func (r *PostgresCategoryRepository) Create(
 	ctx context.Context,
 	category model.CategoryModel,
 ) (model.CategoryModel, error) {
-	row, err := r.q.CreateCategory(ctx, r.mapper.ToCreateParams(category))
+	inserted, err := r.q.CreateCategory(ctx, r.mapper.ToCreateParams(category))
 	if err != nil {
 		return model.CategoryModel{}, err
 	}
 
-	return r.mapper.ToDomain(row)
+	finalized, err := r.q.FinalizeCategoryHierarchy(ctx, inserted.ID)
+	if err != nil {
+		return model.CategoryModel{}, err
+	}
+
+	return r.mapper.ToDomain(finalized)
 }
 
 func (r *PostgresCategoryRepository) FindByID(ctx context.Context, id uint64) (model.CategoryModel, error) {
@@ -90,6 +95,42 @@ func (r *PostgresCategoryRepository) List(ctx context.Context, parentID *uint64)
 	} else {
 		rows, err = r.q.ListRootCategories(ctx)
 	}
+	if err != nil {
+		return nil, err
+	}
+
+	categories := make([]model.CategoryModel, 0, len(rows))
+	for _, row := range rows {
+		category, mapErr := r.mapper.ToDomain(row)
+		if mapErr != nil {
+			return nil, mapErr
+		}
+		categories = append(categories, category)
+	}
+
+	return categories, nil
+}
+
+func (r *PostgresCategoryRepository) ListAll(ctx context.Context) ([]model.CategoryModel, error) {
+	rows, err := r.q.ListAllCategories(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	categories := make([]model.CategoryModel, 0, len(rows))
+	for _, row := range rows {
+		category, mapErr := r.mapper.ToDomain(row)
+		if mapErr != nil {
+			return nil, mapErr
+		}
+		categories = append(categories, category)
+	}
+
+	return categories, nil
+}
+
+func (r *PostgresCategoryRepository) ListDescendants(ctx context.Context, id uint64) ([]model.CategoryModel, error) {
+	rows, err := r.q.ListCategoryDescendants(ctx, int64(id))
 	if err != nil {
 		return nil, err
 	}

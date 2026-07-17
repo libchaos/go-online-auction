@@ -38,7 +38,7 @@ func (s *CreateSpuCommandTestSuite) SetupTest() {
 	)
 
 	now := time.Now().UTC()
-	s.mockCategory, _ = model.RestoreCategoryModel(1, "数码", nil, 0, 1, now, now)
+	s.mockCategory, _ = model.RestoreCategoryModel(1, "数码", nil, 0, "", 0, 1, now, now)
 
 	draftStatus, _ := enum.NewListingStatusEnum(enum.EnumListingStatusDraft)
 	s.mockPersistedSpu, _ = model.RestoreSpuModel(

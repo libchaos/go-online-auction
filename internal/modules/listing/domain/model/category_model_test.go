@@ -50,7 +50,7 @@ func TestRestoreCategoryModel(t *testing.T) {
 
 	t.Run("valid input returns category", func(t *testing.T) {
 		// Act
-		category, err := model.RestoreCategoryModel(1, "数码", nil, 0, 2, now, now)
+		category, err := model.RestoreCategoryModel(1, "数码", nil, 0, "", 0, 2, now, now)
 
 		// Assert
 		require.NoError(t, err)
@@ -60,7 +60,7 @@ func TestRestoreCategoryModel(t *testing.T) {
 
 	t.Run("zero id returns error", func(t *testing.T) {
 		// Act
-		_, err := model.RestoreCategoryModel(0, "数码", nil, 0, 1, now, now)
+		_, err := model.RestoreCategoryModel(0, "数码", nil, 0, "", 0, 1, now, now)
 
 		// Assert
 		require.ErrorIs(t, err, errs.ErrCategoryIDRequired)
@@ -94,4 +94,26 @@ func TestCategoryModel_Update(t *testing.T) {
 		require.ErrorIs(t, err, errs.ErrCategoryNameRequired)
 		require.Equal(t, "数码", category.Name())
 	})
+}
+
+func TestCategoryModel_Hierarchy(t *testing.T) {
+	now := time.Now().UTC()
+
+	t.Run("new category starts at depth 0 with empty path", func(t *testing.T) {
+		category, err := model.NewCategoryModel("数码", nil, 0)
+		require.NoError(t, err)
+		require.Equal(t, int32(0), category.Depth())
+		require.Equal(t, "", category.Path())
+	})
+
+	t.Run("restore keeps depth and path", func(t *testing.T) {
+		category, err := model.RestoreCategoryModel(2, "手机", ptr(uint64(1)), 1, "/1/2", 0, 1, now, now)
+		require.NoError(t, err)
+		require.Equal(t, int32(1), category.Depth())
+		require.Equal(t, "/1/2", category.Path())
+	})
+}
+
+func ptr(v uint64) *uint64 {
+	return &v
 }

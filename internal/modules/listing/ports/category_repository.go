@@ -13,6 +13,10 @@ type CategoryRepository interface {
 	Delete(ctx context.Context, id uint64) error
 	// List returns categories filtered by parent; a nil parentID returns root categories
 	List(ctx context.Context, parentID *uint64) ([]model.CategoryModel, error)
+	// ListAll returns every category ordered by depth then sort order
+	ListAll(ctx context.Context) ([]model.CategoryModel, error)
+	// ListDescendants returns all categories below the given id (excluding itself)
+	ListDescendants(ctx context.Context, id uint64) ([]model.CategoryModel, error)
 	// CountChildren returns the number of direct child categories
 	CountChildren(ctx context.Context, id uint64) (uint64, error)
 	// CountSpusByCategory returns the number of SPUs referencing the category

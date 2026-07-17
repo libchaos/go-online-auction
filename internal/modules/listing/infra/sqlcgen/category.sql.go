@@ -37,7 +37,7 @@ func (q *Queries) CountSpusByCategory(ctx context.Context, categoryID int64) (in
 const createCategory = `-- name: CreateCategory :one
 INSERT INTO categories (name, parent_id, sort_order, version, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, name, parent_id, sort_order, version, created_at, updated_at
+RETURNING id, name, parent_id, sort_order, version, created_at, updated_at, depth, path
 `
 
 type CreateCategoryParams struct {
@@ -67,6 +67,8 @@ func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) 
 		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Depth,
+		&i.Path,
 	)
 	return i, err
 }
@@ -84,8 +86,38 @@ func (q *Queries) DeleteCategory(ctx context.Context, id int64) (int64, error) {
 	return result.RowsAffected(), nil
 }
 
+const finalizeCategoryHierarchy = `-- name: FinalizeCategoryHierarchy :one
+UPDATE categories AS c
+SET depth = CASE WHEN c.parent_id IS NULL THEN 0 ELSE COALESCE(p.depth, 0) + 1 END,
+    path  = CASE WHEN c.parent_id IS NULL THEN '/' || c.id::text
+                 ELSE COALESCE(p.path, '') || '/' || c.id::text END
+FROM (SELECT 1 AS one) AS dummy
+LEFT JOIN categories AS p ON c.parent_id = p.id
+WHERE c.id = $1
+RETURNING c.id, c.name, c.parent_id, c.sort_order, c.version, c.created_at, c.updated_at, c.depth, c.path
+`
+
+// Computes depth and materialized path from the (possibly new) parent after the
+// row already exists, so the auto-generated id can be embedded in the path.
+func (q *Queries) FinalizeCategoryHierarchy(ctx context.Context, id int64) (Category, error) {
+	row := q.db.QueryRow(ctx, finalizeCategoryHierarchy, id)
+	var i Category
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.ParentID,
+		&i.SortOrder,
+		&i.Version,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Depth,
+		&i.Path,
+	)
+	return i, err
+}
+
 const getCategoryByID = `-- name: GetCategoryByID :one
-SELECT id, name, parent_id, sort_order, version, created_at, updated_at FROM categories
+SELECT id, name, parent_id, sort_order, version, created_at, updated_at, depth, path FROM categories
 WHERE id = $1
 `
 
@@ -100,12 +132,49 @@ func (q *Queries) GetCategoryByID(ctx context.Context, id int64) (Category, erro
 		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Depth,
+		&i.Path,
 	)
 	return i, err
 }
 
+const listAllCategories = `-- name: ListAllCategories :many
+SELECT id, name, parent_id, sort_order, version, created_at, updated_at, depth, path FROM categories
+ORDER BY depth ASC, sort_order ASC, id ASC
+`
+
+func (q *Queries) ListAllCategories(ctx context.Context) ([]Category, error) {
+	rows, err := q.db.Query(ctx, listAllCategories)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Category
+	for rows.Next() {
+		var i Category
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.ParentID,
+			&i.SortOrder,
+			&i.Version,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Depth,
+			&i.Path,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCategoriesByParent = `-- name: ListCategoriesByParent :many
-SELECT id, name, parent_id, sort_order, version, created_at, updated_at FROM categories
+SELECT id, name, parent_id, sort_order, version, created_at, updated_at, depth, path FROM categories
 WHERE parent_id = $1::BIGINT
 ORDER BY sort_order ASC, id ASC
 `
@@ -127,6 +196,47 @@ func (q *Queries) ListCategoriesByParent(ctx context.Context, dollar_1 int64) ([
 			&i.Version,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Depth,
+			&i.Path,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCategoryDescendants = `-- name: ListCategoryDescendants :many
+SELECT c.id, c.name, c.parent_id, c.sort_order, c.version, c.created_at, c.updated_at, c.depth, c.path FROM categories AS c
+WHERE c.path LIKE (
+    SELECT p.path FROM categories AS p WHERE p.id = $1
+) || '/%'
+ORDER BY c.depth ASC, c.sort_order ASC, c.id ASC
+`
+
+// All nodes below the given category (excluding itself) via path prefix.
+func (q *Queries) ListCategoryDescendants(ctx context.Context, id int64) ([]Category, error) {
+	rows, err := q.db.Query(ctx, listCategoryDescendants, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Category
+	for rows.Next() {
+		var i Category
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.ParentID,
+			&i.SortOrder,
+			&i.Version,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Depth,
+			&i.Path,
 		); err != nil {
 			return nil, err
 		}
@@ -139,7 +249,7 @@ func (q *Queries) ListCategoriesByParent(ctx context.Context, dollar_1 int64) ([
 }
 
 const listRootCategories = `-- name: ListRootCategories :many
-SELECT id, name, parent_id, sort_order, version, created_at, updated_at FROM categories
+SELECT id, name, parent_id, sort_order, version, created_at, updated_at, depth, path FROM categories
 WHERE parent_id IS NULL
 ORDER BY sort_order ASC, id ASC
 `
@@ -161,6 +271,8 @@ func (q *Queries) ListRootCategories(ctx context.Context) ([]Category, error) {
 			&i.Version,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Depth,
+			&i.Path,
 		); err != nil {
 			return nil, err
 		}

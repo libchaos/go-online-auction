@@ -35,7 +35,7 @@ func (s *CreateCategoryCommandTestSuite) SetupTest() {
 
 	s.mockCreatedAt = time.Now().UTC()
 	s.mockPersistedCategory, _ = model.RestoreCategoryModel(
-		1, "数码", nil, 0, 1, s.mockCreatedAt, s.mockCreatedAt,
+		1, "数码", nil, 0, "", 0, 1, s.mockCreatedAt, s.mockCreatedAt,
 	)
 }
 
@@ -68,7 +68,7 @@ func (s *CreateCategoryCommandTestSuite) TestExecute_ValidParent_ValidatesParent
 	input := command.CreateCategoryCommandInput{Name: "手机", ParentID: &parentID}
 
 	childCategory, _ := model.RestoreCategoryModel(
-		2, "手机", &parentID, 0, 1, s.mockCreatedAt, s.mockCreatedAt,
+		2, "手机", &parentID, 0, "", 0, 1, s.mockCreatedAt, s.mockCreatedAt,
 	)
 
 	s.categoryRepositoryMock.
@@ -140,4 +140,28 @@ func (s *CreateCategoryCommandTestSuite) TestExecute_RepositoryError_ReturnsErro
 	// Assert
 	s.Require().ErrorIs(err, repositoryErr)
 	s.Equal(command.CreateCategoryCommandOutput{}, output)
+}
+
+func (s *CreateCategoryCommandTestSuite) TestExecute_ParentAtMaxDepth_ReturnsDepthExceeded() {
+	// Arrange
+	ctx := context.Background()
+	parentID := uint64(1)
+	input := command.CreateCategoryCommandInput{Name: "手机壳", ParentID: &parentID}
+
+	deepParent, _ := model.RestoreCategoryModel(
+		parentID, "手机", nil, model.MaxCategoryDepth, "/1", 0, 1, s.mockCreatedAt, s.mockCreatedAt,
+	)
+
+	s.categoryRepositoryMock.
+		On("FindByID", mock.Anything, parentID).
+		Return(deepParent, nil)
+	s.loggerMock.On("Error").Return(nil)
+
+	// Act
+	output, err := s.sut.Execute(ctx, input)
+
+	// Assert
+	s.Require().ErrorIs(err, errs.ErrCategoryDepthExceeded)
+	s.Equal(command.CreateCategoryCommandOutput{}, output)
+	s.categoryRepositoryMock.AssertNotCalled(s.T(), "Create")
 }
