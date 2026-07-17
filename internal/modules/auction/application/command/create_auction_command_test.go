@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/application/command"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/enum"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/errs"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/model"
-	"github.com/cristiano-pacheco/go-online-auction/tests/mocks"
+	"auction/internal/modules/auction/application/command"
+	"auction/internal/modules/auction/domain/enum"
+	"auction/internal/modules/auction/domain/errs"
+	"auction/internal/modules/auction/domain/model"
+	"auction/tests/mocks"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )
@@ -19,6 +19,7 @@ type CreateAuctionCommandTestSuite struct {
 	suite.Suite
 	sut                    *command.CreateAuctionCommand
 	auctionRepositoryMock  *mocks.MockAuctionRepository
+	listingValidatorMock   *mocks.MockListingValidator
 	loggerMock             *mocks.MockLogger
 	auctionRepositoryErr   error
 	validListingID         uint64
@@ -32,10 +33,12 @@ type CreateAuctionCommandTestSuite struct {
 
 func (s *CreateAuctionCommandTestSuite) SetupTest() {
 	s.auctionRepositoryMock = mocks.NewMockAuctionRepository(s.T())
+	s.listingValidatorMock = mocks.NewMockListingValidator(s.T())
 	s.loggerMock = mocks.NewMockLogger(s.T())
 
 	s.sut = command.NewCreateAuctionCommand(
 		s.auctionRepositoryMock,
+		s.listingValidatorMock,
 		s.loggerMock,
 	)
 
@@ -70,9 +73,14 @@ func (s *CreateAuctionCommandTestSuite) TestExecute_ValidInput_ReturnsCreatedAuc
 	// Arrange
 	ctx := context.Background()
 	input := command.CreateAuctionCommandInput{
-		ListingID: s.validListingID,
-		EndTime:   s.validEndTime,
+		ListingID:   s.validListingID,
+		EndTime:     s.validEndTime,
+		TradingMode: "english",
 	}
+
+	s.listingValidatorMock.
+		On("IsAuctionable", mock.Anything, s.validListingID).
+		Return(true, nil)
 
 	s.auctionRepositoryMock.
 		On("Create", mock.Anything, mock.AnythingOfType("model.AuctionModel")).
@@ -86,6 +94,7 @@ func (s *CreateAuctionCommandTestSuite) TestExecute_ValidInput_ReturnsCreatedAuc
 	s.Equal(s.mockPersistedAuctionID, output.ID)
 	s.Equal(s.validListingID, output.ListingID)
 	s.Equal(enum.EnumAuctionStateDraft, output.State)
+	s.Equal("english", output.TradingMode)
 	s.Equal(s.validEndTime.Unix(), output.EndTime.Unix())
 	s.Equal(s.mockCreatedAt.Unix(), output.CreatedAt.Unix())
 }
@@ -94,9 +103,14 @@ func (s *CreateAuctionCommandTestSuite) TestExecute_InvalidListingID_ReturnsErro
 	// Arrange
 	ctx := context.Background()
 	input := command.CreateAuctionCommandInput{
-		ListingID: 0,
-		EndTime:   s.validEndTime,
+		ListingID:   0,
+		EndTime:     s.validEndTime,
+		TradingMode: "english",
 	}
+
+	s.listingValidatorMock.
+		On("IsAuctionable", mock.Anything, uint64(0)).
+		Return(true, nil)
 
 	s.loggerMock.On("Error").Return(nil)
 
@@ -112,9 +126,14 @@ func (s *CreateAuctionCommandTestSuite) TestExecute_InvalidEndTime_ReturnsError(
 	// Arrange
 	ctx := context.Background()
 	input := command.CreateAuctionCommandInput{
-		ListingID: s.validListingID,
-		EndTime:   s.invalidEndTime,
+		ListingID:   s.validListingID,
+		EndTime:     s.invalidEndTime,
+		TradingMode: "english",
 	}
+
+	s.listingValidatorMock.
+		On("IsAuctionable", mock.Anything, s.validListingID).
+		Return(true, nil)
 
 	s.loggerMock.On("Error").Return(nil)
 
@@ -130,9 +149,14 @@ func (s *CreateAuctionCommandTestSuite) TestExecute_RepositoryError_ReturnsError
 	// Arrange
 	ctx := context.Background()
 	input := command.CreateAuctionCommandInput{
-		ListingID: s.validListingID,
-		EndTime:   s.validEndTime,
+		ListingID:   s.validListingID,
+		EndTime:     s.validEndTime,
+		TradingMode: "english",
 	}
+
+	s.listingValidatorMock.
+		On("IsAuctionable", mock.Anything, s.validListingID).
+		Return(true, nil)
 
 	emptyAuction := model.AuctionModel{}
 	s.auctionRepositoryMock.
@@ -147,4 +171,51 @@ func (s *CreateAuctionCommandTestSuite) TestExecute_RepositoryError_ReturnsError
 	// Assert
 	s.Require().ErrorIs(err, s.auctionRepositoryErr)
 	s.Equal(command.CreateAuctionCommandOutput{}, output)
+}
+
+func (s *CreateAuctionCommandTestSuite) TestExecute_ListingNotAuctionable_ReturnsError() {
+	// Arrange
+	ctx := context.Background()
+	input := command.CreateAuctionCommandInput{
+		ListingID:   s.validListingID,
+		EndTime:     s.validEndTime,
+		TradingMode: "english",
+	}
+
+	s.listingValidatorMock.
+		On("IsAuctionable", mock.Anything, s.validListingID).
+		Return(false, nil)
+
+	// Act
+	output, err := s.sut.Execute(ctx, input)
+
+	// Assert
+	s.Require().ErrorIs(err, errs.ErrListingNotAvailable)
+	s.Equal(command.CreateAuctionCommandOutput{}, output)
+	s.auctionRepositoryMock.AssertNotCalled(s.T(), "Create")
+}
+
+func (s *CreateAuctionCommandTestSuite) TestExecute_ListingValidatorError_ReturnsError() {
+	// Arrange
+	ctx := context.Background()
+	input := command.CreateAuctionCommandInput{
+		ListingID:   s.validListingID,
+		EndTime:     s.validEndTime,
+		TradingMode: "english",
+	}
+
+	validatorErr := errors.New("validator error")
+	s.listingValidatorMock.
+		On("IsAuctionable", mock.Anything, s.validListingID).
+		Return(false, validatorErr)
+
+	s.loggerMock.On("Error").Return(nil)
+
+	// Act
+	output, err := s.sut.Execute(ctx, input)
+
+	// Assert
+	s.Require().ErrorIs(err, validatorErr)
+	s.Equal(command.CreateAuctionCommandOutput{}, output)
+	s.auctionRepositoryMock.AssertNotCalled(s.T(), "Create")
 }

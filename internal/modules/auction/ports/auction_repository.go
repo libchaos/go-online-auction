@@ -3,8 +3,8 @@ package ports
 import (
 	"context"
 
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/enum"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/model"
+	"auction/internal/modules/auction/domain/enum"
+	"auction/internal/modules/auction/domain/model"
 )
 
 type AuctionRepository interface {
@@ -14,4 +14,8 @@ type AuctionRepository interface {
 	Update(ctx context.Context, auction model.AuctionModel) error
 	FindAllPaginated(ctx context.Context, state *enum.AuctionStateEnum, limit, offset int) ([]model.AuctionModel, error)
 	Count(ctx context.Context, state *enum.AuctionStateEnum) (uint64, error)
+	// FindIDsDueToStart returns IDs of draft auctions whose scheduled start time has passed
+	FindIDsDueToStart(ctx context.Context, limit int) ([]uint64, error)
+	// FindIDsDueToClose returns IDs of active auctions whose end time has passed
+	FindIDsDueToClose(ctx context.Context, limit int) ([]uint64, error)
 }

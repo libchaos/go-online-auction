@@ -225,11 +225,13 @@ Strict separation between write and read operations:
 - Future: Read model as projection from event stream
 
 ### 3. Event-Driven Architecture
-Domain events enable decoupling and real-time features:
-- Commands emit domain events after state changes
-- Events are published to Redis Pub/Sub channels: `auction:{auctionID}:events`
-- WebSocket hub subscribes to Redis channels and broadcasts to connected clients
-- Supports horizontal scaling (multiple server instances share Redis)
+Domain events enable decoupling, auditability and real-time features:
+- Commands record domain events in a **transactional outbox** within the same database transaction as the state change (guaranteed at-least-once delivery)
+- An **outbox relay** drains pending events to the NATS JetStream `AUCTION_EVENTS` stream; the domain event ID doubles as `Nats-Msg-Id`, so redeliveries are deduplicated server-side
+- Every event is wrapped in a **versioned envelope** (`schema_version`) — consumers reject unknown versions instead of misreading payloads
+- The `AUCTION_EVENTS` stream retains all events on file storage (**event store**), enabling **event replay** and **temporal queries** via `GET /api/v1/auctions/{id}/events?from=&until=&limit=`
+- WebSocket hub consumes the stream and broadcasts to connected clients
+- Supports horizontal scaling (multiple server instances share the stream; multiple relay instances are safe)
 
 ### 4. Optimistic Locking for Concurrency
 High-concurrency bid scenarios are handled with:
@@ -310,18 +312,25 @@ go-online-auction/
 │   │       │   │   │   └── bid_repository.go
 │   │       │   │   ├── uow/               # Unit of Work
 │   │       │   │   │   └── auction_unit_of_work.go
-│   │       │   │   ├── entity/            # Database entities
-│   │       │   │   │   ├── auction_entity.go
-│   │       │   │   │   └── bid_entity.go
-│   │       │   │   └── mapper/            # Entity-Domain mappers
+│   │       │   │   ├── query/             # SQL queries (sqlc input)
+│   │       │   │   │   ├── auction.sql
+│   │       │   │   │   └── bid.sql
+│   │       │   │   ├── sqlcgen/           # Generated type-safe queries (sqlc output)
+│   │       │   │   └── mapper/            # Row-Domain mappers
 │   │       │   │       ├── auction_mapper.go
 │   │       │   │       └── bid_mapper.go
 │   │       │   │
 │   │       │   ├── event/
-│   │       │   │   └── dispatcher/        # Redis Pub/Sub dispatchers
-│   │       │   │       ├── redis_auction_started_event_dispatcher.go
-│   │       │   │       ├── redis_bid_placed_event_dispatcher.go
-│   │       │   │       └── redis_auction_ended_event_dispatcher.go
+│   │       │   │   └── dispatcher/        # JetStream event dispatchers
+│   │       │   │       ├── jetstream_auction_started_event_dispatcher.go
+│   │       │   │       ├── jetstream_bid_placed_event_dispatcher.go
+│   │       │   │       └── jetstream_auction_ended_event_dispatcher.go
+│   │       │   │
+│   │       │   ├── messaging/             # JetStream publisher/consumer + bid processor
+│   │       │   │   ├── event_publisher.go
+│   │       │   │   ├── event_consumer.go
+│   │       │   │   ├── publisher.go
+│   │       │   │   └── bid_processor.go
 │   │       │   │
 │   │       │   ├── websocket/             # WebSocket hub
 │   │       │   │   ├── hub.go
@@ -349,7 +358,7 @@ go-online-auction/
 │       │   ├── database/                  # Database setup
 │       │   ├── httpserver/                # HTTP server
 │       │   ├── logger/                    # Logging
-│       │   └── redis/                     # Redis client
+│       │   └── nats/                      # NATS client + stream declaration
 │       └── sdk/
 │           ├── http/                      # HTTP helpers
 │           │   ├── request/
@@ -361,7 +370,7 @@ go-online-auction/
 │   ├── errs/                              # Error types
 │   ├── httpserver/                        # HTTP server config
 │   ├── logger/                            # Logger config
-│   └── redis/                             # Redis config
+│   └── nats/                              # NATS config + connection
 │
 ├── migrations/                            # SQL migrations
 │   ├── 000001_create_auctions_table.up.sql
@@ -387,15 +396,16 @@ go-online-auction/
 | **Go** | 1.25.5 | Primary language |
 | **Chi** | v5.2.3 | HTTP router |
 | **PostgreSQL** | 17.5 | Primary database |
-| **Redis** | 8 | Pub/Sub for events |
+| **NATS (JetStream)** | 2.10 | Command stream + event bus |
 | **pgx** | v5.7.4 | PostgreSQL driver |
-| **go-redis** | v9.17.2 | Redis client |
+| **sqlc** | v1.30.0 | Type-safe SQL code generation |
+| **nats.go** | v1.52.0 | NATS client (JetStream) |
 | **Gorilla WebSocket** | v1.5.3 | WebSocket support |
 | **Cobra** | v1.10.2 | CLI framework |
 | **Viper** | v1.21.0 | Configuration |
 | **Zerolog** | v1.34.0 | Structured logging |
 | **Uber Fx** | v1.24.0 | Dependency injection |
-| **golang-migrate** | v4.19.1 | Database migrations |
+| **goose** | v3.27.2 | Database migrations |
 | **Testify** | v1.11.1 | Testing framework |
 
 ### Frontend
@@ -415,7 +425,7 @@ go-online-auction/
 
 - **Docker Compose** - Local development environment
 - **PostgreSQL 17.5 Alpine** - Database container
-- **Redis 8 Alpine** - Caching and Pub/Sub container
+- **NATS 2.10 Alpine (JetStream)** - Command stream + event bus container
 
 ---
 
@@ -425,6 +435,7 @@ go-online-auction/
 - ✅ Create auctions with configurable end times
 - ✅ Start auctions (Draft → Active state transition)
 - ✅ Cancel auctions (Draft/Active → Cancelled)
+- ✅ Automatic auction scheduling (optional `start_time` activates draft auctions automatically)
 - ✅ Automatic auction closure upon end time
 - ✅ State machine validation (Draft, Active, Closed, Cancelled)
 
@@ -447,6 +458,15 @@ go-online-auction/
 - ✅ Filter auctions by state (draft, active, closed, cancelled)
 - ✅ Get auction details with top 10 bids
 - ✅ Total count for pagination
+
+### Deposit & Bidder Eligibility
+- ✅ Per-auction configurable deposit requirement (`deposit_required` + `deposit_amount_in_cents` on `auctions`)
+- ✅ Hold / release / apply-to-winner / forfeit state machine (`pending → held → released|applied|forfeited`)
+- ✅ Synchronous eligibility precheck on `Place Bid` (HTTP 400 when a required deposit is missing or insufficient)
+- ✅ Asynchronous strong validation in the bid processor (ineligible bids are routed to DLQ as permanent errors)
+- ✅ Automatic settlement on `auction_ended`: winner's held deposit is captured, all other held deposits are released
+- ✅ Real-time deposit status pushed over WebSocket per user (`/ws/v1/deposits`)
+- ✅ External fund movement abstracted behind `PaymentPort` (mock adapter by default; swap for a real PSP later)
 
 ### Frontend Structure
 
@@ -507,7 +527,7 @@ frontend-demo/
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/cristiano-pacheco/go-online-auction
+git clone https://auction
 cd go-online-auction
 ```
 
@@ -518,7 +538,7 @@ docker-compose up -d
 
 This starts:
 - PostgreSQL on `localhost:5432`
-- Redis on `localhost:6379`
+- NATS (JetStream) on `localhost:4222` (monitoring on `localhost:8222`)
 
 ### 3. Make a copy of .env
 ```
@@ -570,11 +590,19 @@ DATABASE_PASSWORD=postgres
 DATABASE_NAME=go-online-auction
 DATABASE_SSL_MODE=disable
 
-# Redis
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_PASSWORD=
-REDIS_DB=0
+# NATS
+NATS_URL=nats://localhost:4222
+NATS_NAME=go-online-auction
+NATS_CREDS=
+NATS_TLS=false
+NATS_MAX_RECONNECTS=60
+NATS_RECONNECT_WAIT=2s
+NATS_DEDUPE_WINDOW=2m
+
+# Auction scheduler
+SCHEDULER_ENABLED=true
+SCHEDULER_INTERVAL=5s
+SCHEDULER_BATCH_SIZE=100
 
 # HTTP Server
 HTTP_SERVER_HOST=0.0.0.0
@@ -603,7 +631,8 @@ Content-Type: application/json
 
 {
   "listing_id": 1,
-  "end_time": "2026-01-15T18:00:00Z"
+  "end_time": "2026-01-15T18:00:00Z",
+  "start_time": "2026-01-10T10:00:00Z"
 }
 
 Response: 201 Created
@@ -612,13 +641,15 @@ Response: 201 Created
     "id": 1,
     "listing_id": 1,
     "state": "draft",
-    "start_time": null,
+    "start_time": "2026-01-10T10:00:00Z",
     "end_time": "2026-01-15T18:00:00Z",
     "highest_bid_amount_in_cents": null,
     "created_at": "2026-01-07T14:30:00Z"
   }
 }
 ```
+
+`start_time` is optional. When provided, the auction scheduler automatically activates the draft auction at that time; when omitted, the auction must be started manually via the start endpoint. Expired active auctions are closed automatically in both cases.
 
 ### List Auctions
 ```http
@@ -670,6 +701,38 @@ Response: 200 OK
 ```
 
 Returns auction with top 10 bids ordered by amount descending.
+
+### Replay Auction Events (Event Store)
+```http
+GET /api/v1/auctions/:id/events?from=2026-01-07T00:00:00Z&until=2026-01-08T00:00:00Z&limit=100
+
+Response: 200 OK
+{
+  "data": {
+    "events": [
+      {
+        "event_type": "auction_started",
+        "event_id": "0d9c9e0a-...",
+        "schema_version": 1,
+        "timestamp": "2026-01-07T14:30:00Z",
+        "auction_id": 1,
+        "data": { "listing_id": 1, "start_time": "...", "end_time": "..." }
+      },
+      {
+        "event_type": "bid_placed",
+        "event_id": "b1f4a3c2-...",
+        "schema_version": 1,
+        "timestamp": "2026-01-07T15:00:00Z",
+        "auction_id": 1,
+        "data": { "bid_id": 5, "user_id": 42, "amount": { "amount_in_cents": 50000 } }
+      }
+    ],
+    "total_count": 2
+  }
+}
+```
+
+Replays the persisted event history of an auction from the JetStream event store in publication order. All query parameters are optional: `from`/`until` (RFC3339) narrow the replay to a time window (temporal query), `limit` caps the number of events.
 
 ### Start Auction
 ```http
@@ -733,6 +796,80 @@ Response: 201 Created
 ```
 
 **Note**: User ID is auto-generated for demo purposes. In production, this would come from authentication.
+
+### Deposit Endpoints
+
+The deposit module lets bidders pre-authorize funds before bidding on deposit-required auctions. The user identity is taken from the auth context.
+
+### Payment Provider Configuration
+`PaymentPort` is selected at startup from `PAYMENT_PROVIDER`:
+- `mock` (default): in-memory adapter that echoes the reference and always succeeds — used for local dev and tests.
+- `generic`: config-driven HTTP adapter (`GenericPaymentAdapter`) that maps `Hold`/`Release`/`Capture`/`Forfeit` to the four endpoint paths below, signing each request via `PAYMENT_AUTH_HEADER` / `PAYMENT_API_KEY`. Point `PAYMENT_BASE_URL` at your PSP and set the per-action paths (`PAYMENT_HOLD_PATH`, `PAYMENT_RELEASE_PATH`, `PAYMENT_CAPTURE_PATH`, `PAYMENT_FORFEIT_PATH`); the provider's hold reference is returned as `external_reference`. Unknown values fall back to `mock` with a warning.
+
+### Create Deposit (Hold)
+```http
+POST /api/v1/deposits
+Content-Type: application/json
+
+{
+  "auction_id": 1,
+  "amount_in_cents": 50000,
+  "currency": "CNY"
+}
+
+Response: 201 Created
+{
+  "data": { "deposit_id": 10, "status": "held" }
+}
+```
+Holds the funds via `PaymentPort`, persists the deposit in `held` state, and publishes a `deposit.evt.<user_id>` event. An optional `idempotency_key` prevents duplicate holds.
+
+### List My Deposits
+```http
+GET /api/v1/deposits?limit=25&offset=0
+
+Response: 200 OK
+{
+  "data": {
+    "deposits": [ { "deposit_id": 10, "auction_id": 1, "amount_in_cents": 50000, "currency": "CNY", "status": "held" } ],
+    "total_count": 1, "limit": 25, "offset": 0
+  }
+}
+```
+
+### Get Deposit by ID
+```http
+GET /api/v1/deposits/:id
+
+Response: 200 OK
+{
+  "data": { "deposit_id": 10, "auction_id": 1, "user_id": 42, "amount_in_cents": 50000, "currency": "CNY", "status": "held", "external_reference": "psp-ref-..." }
+}
+```
+
+### Check Eligibility
+```http
+GET /api/v1/deposits/eligibility?auction_id=1
+
+Response: 200 OK
+{ "data": { "eligible": true, "required": true, "required_amount_in_cents": 50000, "held_amount_in_cents": 50000 } }
+```
+`eligible` is `false` (without an error status) when the auction requires a deposit the caller has not yet satisfied.
+
+### Release / Apply / Forfeit / Cancel
+```http
+POST /api/v1/deposits/:id/release
+POST /api/v1/deposits/:id/apply      # capture toward winning bid; optional { "amount_in_cents": 50000 }
+POST /api/v1/deposits/:id/forfeit
+POST /api/v1/deposits/:id/cancel
+```
+Each transitions the deposit state machine and moves funds via `PaymentPort`. Settlement after `auction_ended` calls these automatically (winner → `apply`, others → `release`).
+
+### Subscribe to Deposit Events (WebSocket)
+```
+ws://localhost:8080/ws/v1/deposits
+```
+Streams deposit status changes for the authenticated user.
 
 ### WebSocket Endpoint
 
@@ -1047,13 +1184,32 @@ Migrations are located in `migrations/` directory:
 # Run all pending migrations
 go run ./main.go db:migrate
 
-# Or using golang-migrate CLI directly
-migrate -path migrations -database "postgresql://postgres:postgres@localhost:5432/go-online-auction?sslmode=disable" up
+# Rollback the last migration
+go run ./main.go db:migrate:down
+
+# Show migration status
+go run ./main.go db:migrate:status
 ```
 
+Migrations use [goose](https://github.com/pressly/goose) with the single-file format (`-- +goose Up` / `-- +goose Down` sections). The SQL files are embedded into the binary, so migrations run without depending on the working directory.
+
 **Migration Files:**
-- `000001_create_auctions_table.up.sql` - Creates auctions table
-- `000002_create_bids_table.up.sql` - Creates bids table
+- `000001_create_auctions_table.sql` - Creates auctions table
+- `000002_create_bids_table.sql` - Creates bids table
+
+### Type-safe SQL with sqlc
+
+Repository queries are written in `internal/modules/*/infra/query/*.sql` and compiled to type-safe Go code by [sqlc](https://github.com/sqlc-dev/sqlc). The goose migrations under `migrations/` are the schema source of truth — sqlc validates every query against it at generation time.
+
+```bash
+# Regenerate after changing queries or migrations (output is committed to git)
+make sqlc
+
+# Static analysis of the queries
+make sqlc-vet
+```
+
+Generated code lives in `internal/modules/*/infra/sqlcgen/` and must not be edited by hand.
 
 ### Generating Mocks
 
@@ -1132,7 +1288,7 @@ docker-compose down -v
 
 **Services:**
 - `postgres` - PostgreSQL database on port 5432
-- `redis` - Redis server on port 6379
+- `nats` - NATS (JetStream) on port 4222 (monitoring on 8222)
 
 ---
 

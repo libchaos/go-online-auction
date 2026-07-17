@@ -8,86 +8,71 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/errs"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/model"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/infra/entity"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/infra/mapper"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/ports"
-	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/uow"
+	"auction/internal/modules/auction/domain/errs"
+	"auction/internal/modules/auction/domain/model"
+	"auction/internal/modules/auction/infra/mapper"
+	"auction/internal/modules/auction/infra/sqlcgen"
+	"auction/internal/modules/auction/ports"
 )
 
 const (
 	// PostgreSQL error codes
-	pgCheckViolationCode = "23514"
+	pgCheckViolationCode  = "23514"
+	pgUniqueViolationCode = "23505"
 
 	// Error message patterns
 	bidMustBeHigherErrMsg = "must be higher than current highest bid"
+
+	// Unique index enforcing (auction_id, idempotency_key)
+	bidIdempotencyIndexName = "ux_bid_auction_idempotency"
 )
 
 var _ ports.BidRepository = (*PostgresBidRepository)(nil)
 
 type PostgresBidRepository struct {
-	db     uow.DBExecutor
+	q      *sqlcgen.Queries
 	mapper *mapper.BidMapper
 }
 
-func NewPostgresBidRepository(db uow.DBExecutor, mapper *mapper.BidMapper) *PostgresBidRepository {
+func NewPostgresBidRepository(db sqlcgen.DBTX, mapper *mapper.BidMapper) *PostgresBidRepository {
 	return &PostgresBidRepository{
-		db:     db,
+		q:      sqlcgen.New(db),
 		mapper: mapper,
 	}
 }
 
-func (r *PostgresBidRepository) Create(ctx context.Context, bid model.BidModel) (model.BidModel, error) {
-	e := r.mapper.ToEntity(bid)
-
-	query := `
-		INSERT INTO bids (auction_id, user_id, amount_in_cents, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id`
-
-	err := r.db.QueryRow(ctx, query,
-		e.AuctionID,
-		e.UserID,
-		e.AmountInCents,
-		e.CreatedAt,
-		e.UpdatedAt,
-	).Scan(&e.ID)
+func (r *PostgresBidRepository) Create(
+	ctx context.Context,
+	bid model.BidModel,
+	idempotencyKey string,
+) (model.BidModel, error) {
+	row, err := r.q.CreateBid(ctx, r.mapper.ToCreateParams(bid, idempotencyKey))
 	if err != nil {
-		// Check if it's a PostgreSQL error from the check_bid_amount trigger
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) {
-			if pgErr.Code == pgCheckViolationCode && strings.Contains(pgErr.Message, bidMustBeHigherErrMsg) {
-				return model.BidModel{}, errs.ErrBidMustExceedHighest
-			}
+		if ok, mapped := mapPostgresCreateError(err); ok {
+			return model.BidModel{}, mapped
 		}
 		return model.BidModel{}, err
 	}
 
-	persistedBid, err := r.mapper.ToDomain(e)
-	if err != nil {
-		return model.BidModel{}, err
-	}
+	return r.mapper.ToDomain(row)
+}
 
-	return persistedBid, nil
+func mapPostgresCreateError(err error) (bool, error) {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return false, nil
+	}
+	if pgErr.Code == pgCheckViolationCode && strings.Contains(pgErr.Message, bidMustBeHigherErrMsg) {
+		return true, errs.ErrBidMustExceedHighest
+	}
+	if pgErr.Code == pgUniqueViolationCode && strings.Contains(pgErr.ConstraintName, bidIdempotencyIndexName) {
+		return true, errs.ErrBidDuplicateIdempotencyKey
+	}
+	return false, nil
 }
 
 func (r *PostgresBidRepository) FindByID(ctx context.Context, id uint64) (model.BidModel, error) {
-	query := `
-		SELECT id, auction_id, user_id, amount_in_cents, created_at, updated_at
-		FROM bids
-		WHERE id = $1`
-
-	var e entity.BidEntity
-	err := r.db.QueryRow(ctx, query, id).Scan(
-		&e.ID,
-		&e.AuctionID,
-		&e.UserID,
-		&e.AmountInCents,
-		&e.CreatedAt,
-		&e.UpdatedAt,
-	)
-
+	row, err := r.q.GetBidByID(ctx, int64(id))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return model.BidModel{}, errs.ErrBidNotFound
@@ -95,68 +80,28 @@ func (r *PostgresBidRepository) FindByID(ctx context.Context, id uint64) (model.
 		return model.BidModel{}, err
 	}
 
-	return r.mapper.ToDomain(e)
+	return r.mapper.ToDomain(row)
 }
 
 func (r *PostgresBidRepository) FindByAuctionID(ctx context.Context, auctionID uint64) ([]model.BidModel, error) {
-	query := `
-		SELECT id, auction_id, user_id, amount_in_cents, created_at, updated_at
-		FROM bids
-		WHERE auction_id = $1
-		ORDER BY created_at ASC`
-
-	rows, err := r.db.Query(ctx, query, auctionID)
+	rows, err := r.q.ListBidsByAuctionID(ctx, int64(auctionID))
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var bids []model.BidModel
-	for rows.Next() {
-		var e entity.BidEntity
-		if scanErr := rows.Scan(
-			&e.ID,
-			&e.AuctionID,
-			&e.UserID,
-			&e.AmountInCents,
-			&e.CreatedAt,
-			&e.UpdatedAt,
-		); scanErr != nil {
-			return nil, scanErr
-		}
-
-		bid, mapErr := r.mapper.ToDomain(e)
-		if mapErr != nil {
-			return nil, mapErr
-		}
-		bids = append(bids, bid)
-	}
-
-	if rowsErr := rows.Err(); rowsErr != nil {
-		return nil, rowsErr
-	}
-
-	return bids, nil
+	return r.mapBidRows(rows, nil)
 }
 
 func (r *PostgresBidRepository) Update(ctx context.Context, bid model.BidModel) error {
-	e := r.mapper.ToEntity(bid)
-
-	query := `
-		UPDATE bids
-		SET updated_at = $1
-		WHERE id = $2`
-
-	result, err := r.db.Exec(ctx, query,
-		e.UpdatedAt,
-		e.ID,
-	)
-
+	rowsAffected, err := r.q.UpdateBid(ctx, sqlcgen.UpdateBidParams{
+		UpdatedAt: bid.UpdatedAt(),
+		ID:        int64(bid.ID()),
+	})
 	if err != nil {
 		return err
 	}
 
-	if result.RowsAffected() == 0 {
+	if rowsAffected == 0 {
 		return errs.ErrBidNotFound
 	}
 
@@ -168,42 +113,24 @@ func (r *PostgresBidRepository) FindTopBidsByAuctionID(
 	auctionID uint64,
 	limit int,
 ) ([]model.BidModel, error) {
-	query := `
-		SELECT id, auction_id, user_id, amount_in_cents, created_at, updated_at
-		FROM bids
-		WHERE auction_id = $1
-		ORDER BY amount_in_cents DESC
-		LIMIT $2`
-
-	rows, err := r.db.Query(ctx, query, auctionID, limit)
+	rows, err := r.q.ListTopBidsByAuctionID(ctx, sqlcgen.ListTopBidsByAuctionIDParams{
+		AuctionID: int64(auctionID),
+		Limit:     int32(limit),
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	bids := []model.BidModel{}
-	for rows.Next() {
-		var e entity.BidEntity
-		if scanErr := rows.Scan(
-			&e.ID,
-			&e.AuctionID,
-			&e.UserID,
-			&e.AmountInCents,
-			&e.CreatedAt,
-			&e.UpdatedAt,
-		); scanErr != nil {
-			return nil, scanErr
-		}
+	return r.mapBidRows(rows, []model.BidModel{})
+}
 
-		bid, mapErr := r.mapper.ToDomain(e)
-		if mapErr != nil {
-			return nil, mapErr
+func (r *PostgresBidRepository) mapBidRows(rows []sqlcgen.Bid, bids []model.BidModel) ([]model.BidModel, error) {
+	for _, row := range rows {
+		bid, err := r.mapper.ToDomain(row)
+		if err != nil {
+			return nil, err
 		}
 		bids = append(bids, bid)
-	}
-
-	if rowsErr := rows.Err(); rowsErr != nil {
-		return nil, rowsErr
 	}
 
 	return bids, nil

@@ -6,4 +6,4 @@ outpkg: "mocks"
 all: true
 recursive: true
 packages:
-    github.com/cristiano-pacheco/go-online-auction/:
+    auction/:

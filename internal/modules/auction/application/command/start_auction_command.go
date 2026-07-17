@@ -4,9 +4,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/event"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/ports"
-	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/logger"
+	"auction/internal/modules/auction/domain/event"
+	"auction/internal/modules/auction/infra/event/envelope"
+	"auction/internal/modules/auction/ports"
+	"auction/internal/shared/modules/logger"
 )
 
 type StartAuctionCommandInput struct {
@@ -23,20 +24,17 @@ type StartAuctionCommandOutput struct {
 }
 
 type StartAuctionCommand struct {
-	uowFactory                    ports.AuctionUnitOfWorkFactory
-	auctionStartedEventDispatcher ports.AuctionStartedEventDispatcher
-	logger                        logger.Logger
+	uowFactory ports.AuctionUnitOfWorkFactory
+	logger     logger.Logger
 }
 
 func NewStartAuctionCommand(
 	uowFactory ports.AuctionUnitOfWorkFactory,
-	auctionStartedEventDispatcher ports.AuctionStartedEventDispatcher,
 	logger logger.Logger,
 ) *StartAuctionCommand {
 	return &StartAuctionCommand{
-		uowFactory:                    uowFactory,
-		auctionStartedEventDispatcher: auctionStartedEventDispatcher,
-		logger:                        logger,
+		uowFactory: uowFactory,
+		logger:     logger,
 	}
 }
 
@@ -69,25 +67,33 @@ func (c *StartAuctionCommand) Execute(
 		return StartAuctionCommandOutput{}, err
 	}
 
-	err = uow.Complete(ctx)
-	if err != nil {
-		c.logger.Error().Err(err).Uint64("auction_id", input.AuctionID).Msg("failed to complete unit of work")
-		return StartAuctionCommandOutput{}, err
-	}
-
+	// Record the event in the transactional outbox so it commits atomically
+	// with the state change; the outbox relay delivers it to JetStream.
 	auctionStartedEvent := event.NewAuctionStartedEvent(
 		auction.ID(),
 		auction.ListingID(),
 		auction.StartTime(),
 		auction.EndTime(),
 	)
-
-	err = c.auctionStartedEventDispatcher.Dispatch(ctx, auctionStartedEvent)
+	outboxEvent, err := envelope.FromAuctionStarted(auctionStartedEvent)
 	if err != nil {
+		c.logger.Error().
+			Err(err).
+			Uint64("auction_id", input.AuctionID).
+			Msg("failed to build AuctionStartedEvent envelope")
+		return StartAuctionCommandOutput{}, err
+	}
+	if err = uow.OutboxRepository().Save(ctx, outboxEvent); err != nil {
 		c.logger.Error().Err(err).
 			Uint64("auction_id", input.AuctionID).
 			Str("event_id", auctionStartedEvent.EventID()).
-			Msg("failed to dispatch AuctionStartedEvent")
+			Msg("failed to save AuctionStartedEvent to outbox")
+		return StartAuctionCommandOutput{}, err
+	}
+
+	err = uow.Complete(ctx)
+	if err != nil {
+		c.logger.Error().Err(err).Uint64("auction_id", input.AuctionID).Msg("failed to complete unit of work")
 		return StartAuctionCommandOutput{}, err
 	}
 

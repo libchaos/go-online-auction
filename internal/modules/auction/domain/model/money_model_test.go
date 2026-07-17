@@ -3,7 +3,7 @@ package model_test
 import (
 	"testing"
 
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/model"
+	"auction/internal/modules/auction/domain/model"
 	"github.com/stretchr/testify/assert"
 )
 

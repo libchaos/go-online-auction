@@ -7,25 +7,24 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/enum"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/errs"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/model"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/infra/entity"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/infra/mapper"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/ports"
-	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/uow"
+	"auction/internal/modules/auction/domain/enum"
+	"auction/internal/modules/auction/domain/errs"
+	"auction/internal/modules/auction/domain/model"
+	"auction/internal/modules/auction/infra/mapper"
+	"auction/internal/modules/auction/infra/sqlcgen"
+	"auction/internal/modules/auction/ports"
 )
 
 var _ ports.AuctionRepository = (*PostgresAuctionRepository)(nil)
 
 type PostgresAuctionRepository struct {
-	db     uow.DBExecutor
+	q      *sqlcgen.Queries
 	mapper *mapper.AuctionMapper
 }
 
-func NewPostgresAuctionRepository(db uow.DBExecutor, mapper *mapper.AuctionMapper) *PostgresAuctionRepository {
+func NewPostgresAuctionRepository(db sqlcgen.DBTX, mapper *mapper.AuctionMapper) *PostgresAuctionRepository {
 	return &PostgresAuctionRepository{
-		db:     db,
+		q:      sqlcgen.New(db),
 		mapper: mapper,
 	}
 }
@@ -34,53 +33,16 @@ func (r *PostgresAuctionRepository) Create(
 	ctx context.Context,
 	auction model.AuctionModel,
 ) (model.AuctionModel, error) {
-	e := r.mapper.ToEntity(auction)
-
-	query := `
-		INSERT INTO auctions (listing_id, end_time, state, highest_bid_amount_in_cents, version, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		RETURNING id`
-
-	err := r.db.QueryRow(ctx, query,
-		e.ListingID,
-		e.EndTime,
-		e.State,
-		e.HighestBidAmountInCents,
-		e.Version,
-		e.CreatedAt,
-		e.UpdatedAt,
-	).Scan(&e.ID)
+	row, err := r.q.CreateAuction(ctx, r.mapper.ToCreateParams(auction))
 	if err != nil {
 		return model.AuctionModel{}, err
 	}
 
-	persistedAuction, err := r.mapper.ToDomain(e)
-	if err != nil {
-		return model.AuctionModel{}, err
-	}
-
-	return persistedAuction, nil
+	return r.mapper.ToDomain(row)
 }
 
 func (r *PostgresAuctionRepository) FindByID(ctx context.Context, id uint64) (model.AuctionModel, error) {
-	query := `
-		SELECT id, listing_id, start_time, end_time, state, highest_bid_amount_in_cents, version, created_at, updated_at
-		FROM auctions
-		WHERE id = $1`
-
-	var e entity.AuctionEntity
-	err := r.db.QueryRow(ctx, query, id).Scan(
-		&e.ID,
-		&e.ListingID,
-		&e.StartTime,
-		&e.EndTime,
-		&e.State,
-		&e.HighestBidAmountInCents,
-		&e.Version,
-		&e.CreatedAt,
-		&e.UpdatedAt,
-	)
-
+	row, err := r.q.GetAuctionByID(ctx, int64(id))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return model.AuctionModel{}, errs.ErrAuctionNotFound
@@ -88,31 +50,13 @@ func (r *PostgresAuctionRepository) FindByID(ctx context.Context, id uint64) (mo
 		return model.AuctionModel{}, err
 	}
 
-	return r.mapper.ToDomain(e)
+	return r.mapper.ToDomain(row)
 }
 
 // FindByIDForUpdate retrieves an auction with row-level lock for update
 // Uses NOWAIT to fail fast under contention
 func (r *PostgresAuctionRepository) FindByIDForUpdate(ctx context.Context, id uint64) (model.AuctionModel, error) {
-	query := `
-		SELECT id, listing_id, start_time, end_time, state, highest_bid_amount_in_cents, version, created_at, updated_at
-		FROM auctions
-		WHERE id = $1
-		FOR UPDATE NOWAIT`
-
-	var e entity.AuctionEntity
-	err := r.db.QueryRow(ctx, query, id).Scan(
-		&e.ID,
-		&e.ListingID,
-		&e.StartTime,
-		&e.EndTime,
-		&e.State,
-		&e.HighestBidAmountInCents,
-		&e.Version,
-		&e.CreatedAt,
-		&e.UpdatedAt,
-	)
-
+	row, err := r.q.GetAuctionByIDForUpdate(ctx, int64(id))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return model.AuctionModel{}, errs.ErrAuctionNotFound
@@ -124,36 +68,19 @@ func (r *PostgresAuctionRepository) FindByIDForUpdate(ctx context.Context, id ui
 		return model.AuctionModel{}, err
 	}
 
-	return r.mapper.ToDomain(e)
+	return r.mapper.ToDomain(row)
 }
 
 func (r *PostgresAuctionRepository) Update(ctx context.Context, auction model.AuctionModel) error {
-	e := r.mapper.ToEntity(auction)
-	previousVersion := e.Version - 1 // Domain increments version before calling Update
+	params := r.mapper.ToUpdateParams(auction)
+	params.PreviousVersion = params.Version - 1 // Domain increments version before calling Update
 
-	query := `
-		UPDATE auctions
-		SET listing_id = $1, start_time = $2, end_time = $3, state = $4, 
-			highest_bid_amount_in_cents = $5, version = $6, updated_at = $7
-		WHERE id = $8 AND version = $9`
-
-	result, err := r.db.Exec(ctx, query,
-		e.ListingID,
-		e.StartTime,
-		e.EndTime,
-		e.State,
-		e.HighestBidAmountInCents,
-		e.Version,
-		e.UpdatedAt,
-		e.ID,
-		previousVersion,
-	)
-
+	rowsAffected, err := r.q.UpdateAuction(ctx, params)
 	if err != nil {
 		return err
 	}
 
-	if result.RowsAffected() == 0 {
+	if rowsAffected == 0 {
 		return errs.ErrConcurrencyConflict
 	}
 
@@ -165,84 +92,79 @@ func (r *PostgresAuctionRepository) FindAllPaginated(
 	state *enum.AuctionStateEnum,
 	limit, offset int,
 ) ([]model.AuctionModel, error) {
-	var query string
-	var args []any
+	var rows []sqlcgen.Auction
+	var err error
 
 	if state != nil {
-		stateStr := state.String()
-		query = `
-			SELECT id, listing_id, start_time, end_time, state, highest_bid_amount_in_cents, version, created_at, updated_at
-			FROM auctions
-			WHERE state = $1
-			ORDER BY created_at DESC
-			LIMIT $2 OFFSET $3`
-		args = []any{stateStr, limit, offset}
+		rows, err = r.q.ListAuctionsByState(ctx, sqlcgen.ListAuctionsByStateParams{
+			State:  sqlcgen.AuctionState(state.String()),
+			Limit:  int32(limit),
+			Offset: int32(offset),
+		})
 	} else {
-		query = `
-			SELECT id, listing_id, start_time, end_time, state, highest_bid_amount_in_cents, version, created_at, updated_at
-			FROM auctions
-			ORDER BY created_at DESC
-			LIMIT $1 OFFSET $2`
-		args = []any{limit, offset}
+		rows, err = r.q.ListAuctions(ctx, sqlcgen.ListAuctionsParams{
+			Limit:  int32(limit),
+			Offset: int32(offset),
+		})
 	}
-
-	rows, err := r.db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
 	auctions := []model.AuctionModel{}
-	for rows.Next() {
-		var e entity.AuctionEntity
-		if scanErr := rows.Scan(
-			&e.ID,
-			&e.ListingID,
-			&e.StartTime,
-			&e.EndTime,
-			&e.State,
-			&e.HighestBidAmountInCents,
-			&e.Version,
-			&e.CreatedAt,
-			&e.UpdatedAt,
-		); scanErr != nil {
-			return nil, scanErr
-		}
-
-		auction, mapErr := r.mapper.ToDomain(e)
+	for _, row := range rows {
+		auction, mapErr := r.mapper.ToDomain(row)
 		if mapErr != nil {
 			return nil, mapErr
 		}
 		auctions = append(auctions, auction)
 	}
 
-	if rowsErr := rows.Err(); rowsErr != nil {
-		return nil, rowsErr
-	}
-
 	return auctions, nil
 }
 
 func (r *PostgresAuctionRepository) Count(ctx context.Context, state *enum.AuctionStateEnum) (uint64, error) {
-	var query string
-	var args []any
+	var count int64
+	var err error
 
 	if state != nil {
-		stateStr := state.String()
-		query = `SELECT COUNT(*) FROM auctions WHERE state = $1`
-		args = []any{stateStr}
+		count, err = r.q.CountAuctionsByState(ctx, sqlcgen.AuctionState(state.String()))
 	} else {
-		query = `SELECT COUNT(*) FROM auctions`
-		args = []any{}
+		count, err = r.q.CountAuctions(ctx)
 	}
-
-	var count uint64
-	err := r.db.QueryRow(ctx, query, args...).Scan(&count)
 	if err != nil {
 		return 0, err
 	}
 
-	return count, nil
+	return uint64(count), nil
+}
+
+// FindIDsDueToStart returns IDs of draft auctions whose scheduled start time has passed
+func (r *PostgresAuctionRepository) FindIDsDueToStart(ctx context.Context, limit int) ([]uint64, error) {
+	ids, err := r.q.ListAuctionIDsDueToStart(ctx, int32(limit))
+	if err != nil {
+		return nil, err
+	}
+
+	return toUint64IDs(ids), nil
+}
+
+// FindIDsDueToClose returns IDs of active auctions whose end time has passed
+func (r *PostgresAuctionRepository) FindIDsDueToClose(ctx context.Context, limit int) ([]uint64, error) {
+	ids, err := r.q.ListAuctionIDsDueToClose(ctx, int32(limit))
+	if err != nil {
+		return nil, err
+	}
+
+	return toUint64IDs(ids), nil
+}
+
+func toUint64IDs(ids []int64) []uint64 {
+	result := make([]uint64, 0, len(ids))
+	for _, id := range ids {
+		result = append(result, uint64(id))
+	}
+	return result
 }
 
 func isPgLockError(err error) bool {

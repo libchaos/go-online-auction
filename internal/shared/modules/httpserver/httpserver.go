@@ -3,8 +3,8 @@ package httpserver
 import (
 	"time"
 
-	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/config"
-	"github.com/cristiano-pacheco/go-online-auction/pkg/httpserver"
+	"auction/internal/shared/modules/config"
+	"auction/pkg/httpserver"
 )
 
 func New(cfg config.Config) (*httpserver.Server, error) {

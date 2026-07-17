@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/errs"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/model"
+	"auction/internal/modules/auction/domain/errs"
+	"auction/internal/modules/auction/domain/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

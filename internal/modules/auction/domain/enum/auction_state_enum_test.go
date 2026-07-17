@@ -3,8 +3,8 @@ package enum_test
 import (
 	"testing"
 
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/enum"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/errs"
+	"auction/internal/modules/auction/domain/enum"
+	"auction/internal/modules/auction/domain/errs"
 	"github.com/stretchr/testify/suite"
 )
 

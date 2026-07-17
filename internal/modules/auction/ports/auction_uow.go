@@ -6,6 +6,9 @@ import "context"
 type AuctionUnitOfWork interface {
 	AuctionRepository() AuctionRepository
 	BidRepository() BidRepository
+	// OutboxRepository records domain events in the transactional outbox so they
+	// commit atomically with the state change that produced them
+	OutboxRepository() OutboxRepository
 	Complete(ctx context.Context) error
 	Rollback(ctx context.Context) error
 }

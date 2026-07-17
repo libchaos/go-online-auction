@@ -6,7 +6,7 @@ import (
 	"maps"
 	"net/http"
 
-	"github.com/cristiano-pacheco/go-online-auction/pkg/errs"
+	"auction/pkg/errs"
 )
 
 func Error(w http.ResponseWriter, err error) {

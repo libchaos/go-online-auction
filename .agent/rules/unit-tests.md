@@ -129,7 +129,7 @@ func TestSomeFunction(t *testing.T) {
   - Mocks are already in place; no need to generate them.
   - All mocks are located in the tests/mocks directory.
   - Example imports:
-     - `"github.com/cristiano-pacheco/go-online-auction/tests/mocks"`
+     - `"auction/tests/mocks"`
 
 6. Mock Naming Convention:
 

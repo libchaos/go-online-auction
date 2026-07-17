@@ -4,12 +4,12 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
 
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction"
-	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/config"
-	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/database"
-	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/httpserver"
-	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/logger"
-	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/redis"
+	"auction/internal/modules/auction"
+	"auction/internal/shared/modules/config"
+	"auction/internal/shared/modules/database"
+	"auction/internal/shared/modules/httpserver"
+	"auction/internal/shared/modules/logger"
+	"auction/internal/shared/modules/nats"
 )
 
 var websocketCmd = &cobra.Command{
@@ -21,7 +21,7 @@ var websocketCmd = &cobra.Command{
 			config.Module,
 			logger.Module,
 			database.Module,
-			redis.Module,
+			nats.Module,
 			httpserver.Module,
 			auction.Module,
 			fx.Invoke(

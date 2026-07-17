@@ -4,8 +4,9 @@ import (
 	"errors"
 	"net/http"
 
-	domainerrs "github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/errs"
-	"github.com/cristiano-pacheco/go-online-auction/pkg/errs"
+	domainerrs "auction/internal/modules/auction/domain/errs"
+	depositerrs "auction/internal/modules/deposit/domain/errs"
+	"auction/pkg/errs"
 )
 
 var (
@@ -65,6 +66,42 @@ var (
 		http.StatusBadRequest,
 		nil,
 	)
+	ErrStartTimeMustBeInFuture = errs.New(
+		"AUCTION_22",
+		"Start time must be in the future",
+		http.StatusBadRequest,
+		nil,
+	)
+	ErrStartTimeMustBeBeforeEndTime = errs.New(
+		"AUCTION_23",
+		"Start time must be before end time",
+		http.StatusBadRequest,
+		nil,
+	)
+	ErrListingNotAvailable = errs.New(
+		"AUCTION_24",
+		"Listing does not exist or is not available for auction",
+		http.StatusUnprocessableEntity,
+		nil,
+	)
+	ErrDepositRequired = errs.New(
+		"AUCTION_25",
+		"A deposit is required to bid on this auction",
+		http.StatusBadRequest,
+		nil,
+	)
+	ErrDepositInsufficient = errs.New(
+		"AUCTION_26",
+		"Held deposit amount is insufficient for this auction",
+		http.StatusBadRequest,
+		nil,
+	)
+	ErrDepositNotHeld = errs.New(
+		"AUCTION_27",
+		"No held deposit found for this user and auction",
+		http.StatusBadRequest,
+		nil,
+	)
 )
 
 var domainToHTTPErrorMap = []struct {
@@ -89,6 +126,12 @@ var domainToHTTPErrorMap = []struct {
 	{domainerrs.ErrEndTimeRequired, ErrEndTimeRequired},
 	{domainerrs.ErrBidIDRequired, ErrBidIDRequired},
 	{domainerrs.ErrUserIDRequired, ErrUserIDRequired},
+	{domainerrs.ErrStartTimeMustBeInFuture, ErrStartTimeMustBeInFuture},
+	{domainerrs.ErrStartTimeMustBeBeforeEndTime, ErrStartTimeMustBeBeforeEndTime},
+	{domainerrs.ErrListingNotAvailable, ErrListingNotAvailable},
+	{depositerrs.ErrDepositRequired, ErrDepositRequired},
+	{depositerrs.ErrDepositInsufficient, ErrDepositInsufficient},
+	{depositerrs.ErrDepositNotHeld, ErrDepositNotHeld},
 }
 
 func MapDomainError(err error) error {

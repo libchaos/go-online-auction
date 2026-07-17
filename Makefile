@@ -21,6 +21,7 @@ install-libs:
 	go install github.com/vektra/mockery/v2@latest
 	go install github.com/swaggo/swag/cmd/swag@latest
 	go install go.uber.org/nilaway/cmd/nilaway@latest
+	go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0
 
 # ==============================================================================
 # Administration
@@ -42,6 +43,17 @@ migrate:
 	go run ./main.go db:migrate
 
 # ==============================================================================
+# Code generation
+
+.PHONY: sqlc
+sqlc:
+	sqlc generate
+
+.PHONY: sqlc-vet
+sqlc-vet:
+	sqlc vet
+
+# ==============================================================================
 # Running tests within the local computer
 
 .PHONY: static
@@ -57,7 +69,7 @@ vuln-check:
 
 .PHONY: nilaway
 nilaway:
-	nilaway --include-pkgs="github.com/cristiano-pacheco/go-online-auction" --exclude-pkgs="vendor/" ./...
+	nilaway --include-pkgs="auction" --exclude-pkgs="vendor/" ./...
 
 .PHONY: test
 test:

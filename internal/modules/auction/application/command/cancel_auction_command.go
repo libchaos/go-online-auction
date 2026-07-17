@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/ports"
-	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/logger"
+	"auction/internal/modules/auction/ports"
+	"auction/internal/shared/modules/logger"
 )
 
 type CancelAuctionCommandInput struct {

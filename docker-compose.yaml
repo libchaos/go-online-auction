@@ -13,20 +13,21 @@ services:
     networks:
       - backend
 
-  redis:
-    image: redis:8-alpine
-    container_name: redis
+  nats:
+    image: nats:2.10-alpine
+    container_name: nats
+    command: -js -sd /data
     ports:
-      - "6379:6379"
+      - "4222:4222"
+      - "8222:8222"
     volumes:
-      - redis-data:/data
-    command: redis-server --appendonly yes
+      - nats-data:/data
     networks:
       - backend
 
 volumes:
   postgres-data:
-  redis-data:
+  nats-data:
   postgres:
 
 networks:

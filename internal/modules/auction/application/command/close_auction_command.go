@@ -4,10 +4,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/event"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/model"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/ports"
-	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/logger"
+	"auction/internal/modules/auction/domain/event"
+	"auction/internal/modules/auction/domain/model"
+	"auction/internal/modules/auction/infra/event/envelope"
+	"auction/internal/modules/auction/ports"
+	"auction/internal/shared/modules/logger"
 )
 
 type CloseAuctionCommandInput struct {
@@ -24,20 +25,17 @@ type CloseAuctionCommandOutput struct {
 }
 
 type CloseAuctionCommand struct {
-	uowFactory                  ports.AuctionUnitOfWorkFactory
-	auctionEndedEventDispatcher ports.AuctionEndedEventDispatcher
-	logger                      logger.Logger
+	uowFactory ports.AuctionUnitOfWorkFactory
+	logger     logger.Logger
 }
 
 func NewCloseAuctionCommand(
 	uowFactory ports.AuctionUnitOfWorkFactory,
-	auctionEndedEventDispatcher ports.AuctionEndedEventDispatcher,
 	logger logger.Logger,
 ) *CloseAuctionCommand {
 	return &CloseAuctionCommand{
-		uowFactory:                  uowFactory,
-		auctionEndedEventDispatcher: auctionEndedEventDispatcher,
-		logger:                      logger,
+		uowFactory: uowFactory,
+		logger:     logger,
 	}
 }
 
@@ -58,7 +56,13 @@ func (c *CloseAuctionCommand) Execute(
 		return CloseAuctionCommandOutput{}, err
 	}
 
-	err = auction.Close()
+	bids, err := uow.BidRepository().FindByAuctionID(ctx, auction.ID())
+	if err != nil {
+		c.logger.Error().Err(err).Uint64("auction_id", input.AuctionID).Msg("failed to find bids for auction")
+		return CloseAuctionCommandOutput{}, err
+	}
+
+	err = auction.Close(bids)
 	if err != nil {
 		c.logger.Error().Err(err).Uint64("auction_id", input.AuctionID).Msg("failed to close auction")
 		return CloseAuctionCommandOutput{}, err
@@ -72,29 +76,38 @@ func (c *CloseAuctionCommand) Execute(
 
 	var winningBidID *uint64
 	var finalAmount *model.MoneyModel
-	if auction.HighestBidAmount() != nil {
-		money := model.NewMoneyModel(*auction.HighestBidAmount())
-		finalAmount = &money
+	if auction.WinnerUserID() != nil && auction.WinningBidAmount() != nil {
+		winningBidID = auction.WinningBidID()
+		amount := model.NewMoneyModel(*auction.WinningBidAmount())
+		finalAmount = &amount
 	}
 
-	err = uow.Complete(ctx)
-	if err != nil {
-		c.logger.Error().Err(err).Uint64("auction_id", input.AuctionID).Msg("failed to complete unit of work")
-		return CloseAuctionCommandOutput{}, err
-	}
-
+	// Record the event in the transactional outbox so it commits atomically
+	// with the state change; the outbox relay delivers it to JetStream.
 	auctionEndedEvent := event.NewAuctionEndedEvent(
 		auction.ID(),
 		winningBidID,
 		finalAmount,
 	)
-
-	err = c.auctionEndedEventDispatcher.Dispatch(ctx, auctionEndedEvent)
+	outboxEvent, err := envelope.FromAuctionEnded(auctionEndedEvent)
 	if err != nil {
+		c.logger.Error().
+			Err(err).
+			Uint64("auction_id", input.AuctionID).
+			Msg("failed to build AuctionEndedEvent envelope")
+		return CloseAuctionCommandOutput{}, err
+	}
+	if err = uow.OutboxRepository().Save(ctx, outboxEvent); err != nil {
 		c.logger.Error().Err(err).
 			Uint64("auction_id", input.AuctionID).
 			Str("event_id", auctionEndedEvent.EventID()).
-			Msg("failed to dispatch AuctionEndedEvent")
+			Msg("failed to save AuctionEndedEvent to outbox")
+		return CloseAuctionCommandOutput{}, err
+	}
+
+	err = uow.Complete(ctx)
+	if err != nil {
+		c.logger.Error().Err(err).Uint64("auction_id", input.AuctionID).Msg("failed to complete unit of work")
 		return CloseAuctionCommandOutput{}, err
 	}
 

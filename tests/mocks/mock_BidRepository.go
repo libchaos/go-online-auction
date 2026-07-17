@@ -3,9 +3,9 @@
 package mocks
 
 import (
+	model "auction/internal/modules/auction/domain/model"
 	context "context"
 
-	model "github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/model"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -22,9 +22,9 @@ func (_m *MockBidRepository) EXPECT() *MockBidRepository_Expecter {
 	return &MockBidRepository_Expecter{mock: &_m.Mock}
 }
 
-// Create provides a mock function with given fields: ctx, bid
-func (_m *MockBidRepository) Create(ctx context.Context, bid model.BidModel) (model.BidModel, error) {
-	ret := _m.Called(ctx, bid)
+// Create provides a mock function with given fields: ctx, bid, idempotencyKey
+func (_m *MockBidRepository) Create(ctx context.Context, bid model.BidModel, idempotencyKey string) (model.BidModel, error) {
+	ret := _m.Called(ctx, bid, idempotencyKey)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Create")
@@ -32,17 +32,17 @@ func (_m *MockBidRepository) Create(ctx context.Context, bid model.BidModel) (mo
 
 	var r0 model.BidModel
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, model.BidModel) (model.BidModel, error)); ok {
-		return rf(ctx, bid)
+	if rf, ok := ret.Get(0).(func(context.Context, model.BidModel, string) (model.BidModel, error)); ok {
+		return rf(ctx, bid, idempotencyKey)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, model.BidModel) model.BidModel); ok {
-		r0 = rf(ctx, bid)
+	if rf, ok := ret.Get(0).(func(context.Context, model.BidModel, string) model.BidModel); ok {
+		r0 = rf(ctx, bid, idempotencyKey)
 	} else {
 		r0 = ret.Get(0).(model.BidModel)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, model.BidModel) error); ok {
-		r1 = rf(ctx, bid)
+	if rf, ok := ret.Get(1).(func(context.Context, model.BidModel, string) error); ok {
+		r1 = rf(ctx, bid, idempotencyKey)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -58,13 +58,14 @@ type MockBidRepository_Create_Call struct {
 // Create is a helper method to define mock.On call
 //   - ctx context.Context
 //   - bid model.BidModel
-func (_e *MockBidRepository_Expecter) Create(ctx interface{}, bid interface{}) *MockBidRepository_Create_Call {
-	return &MockBidRepository_Create_Call{Call: _e.mock.On("Create", ctx, bid)}
+//   - idempotencyKey string
+func (_e *MockBidRepository_Expecter) Create(ctx interface{}, bid interface{}, idempotencyKey interface{}) *MockBidRepository_Create_Call {
+	return &MockBidRepository_Create_Call{Call: _e.mock.On("Create", ctx, bid, idempotencyKey)}
 }
 
-func (_c *MockBidRepository_Create_Call) Run(run func(ctx context.Context, bid model.BidModel)) *MockBidRepository_Create_Call {
+func (_c *MockBidRepository_Create_Call) Run(run func(ctx context.Context, bid model.BidModel, idempotencyKey string)) *MockBidRepository_Create_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(model.BidModel))
+		run(args[0].(context.Context), args[1].(model.BidModel), args[2].(string))
 	})
 	return _c
 }
@@ -74,7 +75,7 @@ func (_c *MockBidRepository_Create_Call) Return(_a0 model.BidModel, _a1 error) *
 	return _c
 }
 
-func (_c *MockBidRepository_Create_Call) RunAndReturn(run func(context.Context, model.BidModel) (model.BidModel, error)) *MockBidRepository_Create_Call {
+func (_c *MockBidRepository_Create_Call) RunAndReturn(run func(context.Context, model.BidModel, string) (model.BidModel, error)) *MockBidRepository_Create_Call {
 	_c.Call.Return(run)
 	return _c
 }

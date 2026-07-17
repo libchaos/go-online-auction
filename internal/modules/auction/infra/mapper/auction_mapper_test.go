@@ -4,11 +4,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/enum"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/model"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/infra/entity"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/infra/mapper"
 	"github.com/stretchr/testify/suite"
+
+	"auction/internal/modules/auction/domain/enum"
+	"auction/internal/modules/auction/domain/model"
+	"auction/internal/modules/auction/infra/mapper"
+	"auction/internal/modules/auction/infra/sqlcgen"
 )
 
 type AuctionMapperTestSuite struct {
@@ -24,58 +25,63 @@ func TestAuctionMapperSuite(t *testing.T) {
 	suite.Run(t, new(AuctionMapperTestSuite))
 }
 
-func (s *AuctionMapperTestSuite) TestToDomain_ValidEntity_ReturnsAuctionModel() {
+func (s *AuctionMapperTestSuite) TestToDomain_ValidRow_ReturnsAuctionModel() {
 	// Arrange
 	now := time.Now().UTC()
-	highestBidAmount := uint64(5000)
-	e := entity.AuctionEntity{
+	highestBidAmount := int64(5000)
+	a := sqlcgen.Auction{
 		ID:                      1,
 		ListingID:               10,
+		TradingMode:             "english",
 		StartTime:               &now,
 		EndTime:                 now.Add(24 * time.Hour),
-		State:                   "active",
+		State:                   sqlcgen.AuctionStateActive,
 		HighestBidAmountInCents: &highestBidAmount,
+		ExtensionWindowSec:      300,
 		Version:                 5,
 		CreatedAt:               now,
 		UpdatedAt:               now,
 	}
 
 	// Act
-	result, err := s.sut.ToDomain(e)
+	result, err := s.sut.ToDomain(a)
 
 	// Assert
 	s.Require().NoError(err)
-	s.Equal(e.ID, result.ID())
-	s.Equal(e.ListingID, result.ListingID())
+	s.Equal(uint64(a.ID), result.ID())
+	s.Equal(uint64(a.ListingID), result.ListingID())
+	tradingMode := result.TradingMode()
+	s.Equal("english", tradingMode.String())
 	s.NotNil(result.StartTime())
-	s.Equal(e.StartTime.UTC(), *result.StartTime())
-	s.Equal(e.EndTime.UTC(), result.EndTime())
+	s.Equal(a.StartTime.UTC(), *result.StartTime())
+	s.Equal(a.EndTime.UTC(), result.EndTime())
 	state := result.State()
-	s.Equal(e.State, state.String())
+	s.Equal(string(a.State), state.String())
 	s.NotNil(result.HighestBidAmount())
-	s.Equal(*e.HighestBidAmountInCents, *result.HighestBidAmount())
-	s.Equal(e.Version, result.Version())
-	s.Equal(e.CreatedAt.UTC(), result.CreatedAt())
-	s.Equal(e.UpdatedAt.UTC(), result.UpdatedAt())
+	s.Equal(uint64(highestBidAmount), *result.HighestBidAmount())
+	s.Equal(uint64(a.Version), result.Version())
+	s.Equal(a.CreatedAt.UTC(), result.CreatedAt())
+	s.Equal(a.UpdatedAt.UTC(), result.UpdatedAt())
 }
 
-func (s *AuctionMapperTestSuite) TestToDomain_NilHighestBidID_ReturnsAuctionModelWithNilHighestBidID() {
+func (s *AuctionMapperTestSuite) TestToDomain_NilHighestBidAmount_ReturnsNilAmount() {
 	// Arrange
 	now := time.Now().UTC()
-	e := entity.AuctionEntity{
-		ID:                      1,
-		ListingID:               10,
-		StartTime:               &now,
-		EndTime:                 now.Add(24 * time.Hour),
-		State:                   "draft",
-		HighestBidAmountInCents: nil,
-		Version:                 0,
-		CreatedAt:               now,
-		UpdatedAt:               now,
+	a := sqlcgen.Auction{
+		ID:                 1,
+		ListingID:          10,
+		TradingMode:        "english",
+		StartTime:          &now,
+		EndTime:            now.Add(24 * time.Hour),
+		State:              sqlcgen.AuctionStateDraft,
+		ExtensionWindowSec: 300,
+		Version:            0,
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	}
 
 	// Act
-	result, err := s.sut.ToDomain(e)
+	result, err := s.sut.ToDomain(a)
 
 	// Assert
 	s.Require().NoError(err)
@@ -85,155 +91,102 @@ func (s *AuctionMapperTestSuite) TestToDomain_NilHighestBidID_ReturnsAuctionMode
 func (s *AuctionMapperTestSuite) TestToDomain_InvalidState_ReturnsError() {
 	// Arrange
 	now := time.Now().UTC()
-	e := entity.AuctionEntity{
-		ID:                      1,
-		ListingID:               10,
-		StartTime:               &now,
-		EndTime:                 now.Add(24 * time.Hour),
-		State:                   "invalid_state",
-		HighestBidAmountInCents: nil,
-		Version:                 0,
-		CreatedAt:               now,
-		UpdatedAt:               now,
+	a := sqlcgen.Auction{
+		ID:                 1,
+		ListingID:          10,
+		TradingMode:        "english",
+		StartTime:          &now,
+		EndTime:            now.Add(24 * time.Hour),
+		State:              "invalid_state",
+		ExtensionWindowSec: 300,
+		Version:            0,
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	}
 
 	// Act
-	result, err := s.sut.ToDomain(e)
+	result, err := s.sut.ToDomain(a)
 
 	// Assert
 	s.Require().Error(err)
 	s.Equal(model.AuctionModel{}, result)
 }
 
-func (s *AuctionMapperTestSuite) TestToEntity_ValidAuctionModel_ReturnsAuctionEntity() {
+func (s *AuctionMapperTestSuite) TestToCreateParams_ValidAuctionModel_ReturnsParams() {
 	// Arrange
 	now := time.Now().UTC()
 	highestBidAmount := uint64(5000)
-	state, _ := enum.NewAuctionStateEnum("active")
-	auction, err := model.RestoreAuctionModel(
-		1,
-		10,
-		&now,
-		now.Add(24*time.Hour),
-		state,
-		&highestBidAmount,
-		5,
-		now,
-		now,
-	)
-	s.Require().NoError(err)
+	auction := s.restoreAuction(now, &highestBidAmount, "active", 5)
 
 	// Act
-	result := s.sut.ToEntity(auction)
+	result := s.sut.ToCreateParams(auction)
 
 	// Assert
-	s.Equal(auction.ID(), result.ID)
-	s.Equal(auction.ListingID(), result.ListingID)
-	s.Equal(auction.StartTime(), result.StartTime)
+	s.Equal(int64(auction.ListingID()), result.ListingID)
+	tradingMode := auction.TradingMode()
+	s.Equal(tradingMode.String(), result.TradingMode)
 	s.Equal(auction.EndTime(), result.EndTime)
-	auctionState := auction.State()
-	s.Equal(auctionState.String(), result.State)
+	s.Equal(sqlcgen.AuctionStateActive, result.State)
 	s.NotNil(result.HighestBidAmountInCents)
-	s.Equal(*auction.HighestBidAmount(), *result.HighestBidAmountInCents)
-	s.Equal(auction.Version(), result.Version)
+	s.Equal(int64(highestBidAmount), *result.HighestBidAmountInCents)
+	s.Equal(int64(auction.Version()), result.Version)
 	s.Equal(auction.CreatedAt(), result.CreatedAt)
 	s.Equal(auction.UpdatedAt(), result.UpdatedAt)
 }
 
-func (s *AuctionMapperTestSuite) TestToEntity_NilHighestBidID_ReturnsEntityWithNilHighestBidID() {
+func (s *AuctionMapperTestSuite) TestToCreateParams_NilHighestBidAmount_ReturnsNilAmount() {
 	// Arrange
 	now := time.Now().UTC()
-	state, _ := enum.NewAuctionStateEnum("draft")
-	auction, err := model.RestoreAuctionModel(
-		1,
-		10,
-		nil,
-		now.Add(24*time.Hour),
-		state,
-		nil,
-		0,
-		now,
-		now,
-	)
-	s.Require().NoError(err)
+	auction := s.restoreAuction(now, nil, "draft", 0)
 
 	// Act
-	result := s.sut.ToEntity(auction)
+	result := s.sut.ToCreateParams(auction)
 
 	// Assert
 	s.Nil(result.HighestBidAmountInCents)
 }
 
-func (s *AuctionMapperTestSuite) TestToDomain_WithHighestBidAmount_MapsCorrectly() {
+func (s *AuctionMapperTestSuite) TestToUpdateParams_ValidAuctionModel_ReturnsParams() {
 	// Arrange
 	now := time.Now().UTC()
 	highestBidAmount := uint64(5000)
-	e := entity.AuctionEntity{
-		ID:                      1,
-		ListingID:               10,
-		StartTime:               &now,
-		EndTime:                 now.Add(24 * time.Hour),
-		State:                   "active",
-		HighestBidAmountInCents: &highestBidAmount,
-		Version:                 5,
-		CreatedAt:               now,
-		UpdatedAt:               now,
-	}
+	auction := s.restoreAuction(now, &highestBidAmount, "active", 5)
 
 	// Act
-	result, err := s.sut.ToDomain(e)
+	result := s.sut.ToUpdateParams(auction)
 
 	// Assert
-	s.Require().NoError(err)
-	s.NotNil(result.HighestBidAmount())
-	s.Equal(highestBidAmount, *result.HighestBidAmount())
+	s.Equal(int64(auction.ID()), result.ID)
+	s.Equal(int64(auction.ListingID()), result.ListingID)
+	s.Equal(auction.StartTime(), result.StartTime)
+	s.Equal(auction.EndTime(), result.EndTime)
+	s.Equal(sqlcgen.AuctionStateActive, result.State)
+	s.NotNil(result.HighestBidAmountInCents)
+	s.Equal(int64(highestBidAmount), *result.HighestBidAmountInCents)
+	s.Equal(int64(auction.Version()), result.Version)
+	s.Equal(auction.UpdatedAt(), result.UpdatedAt)
 }
 
-func (s *AuctionMapperTestSuite) TestToDomain_NilHighestBidAmount_ReturnsNilAmount() {
-	// Arrange
-	now := time.Now().UTC()
-	e := entity.AuctionEntity{
-		ID:                      1,
-		ListingID:               10,
-		StartTime:               &now,
-		EndTime:                 now.Add(24 * time.Hour),
-		State:                   "draft",
-		HighestBidAmountInCents: nil,
-		Version:                 0,
-		CreatedAt:               now,
-		UpdatedAt:               now,
-	}
-
-	// Act
-	result, err := s.sut.ToDomain(e)
-
-	// Assert
+func (s *AuctionMapperTestSuite) restoreAuction(
+	now time.Time,
+	highestBidAmount *uint64,
+	state string,
+	version uint64,
+) model.AuctionModel {
+	stateEnum, err := enum.NewAuctionStateEnum(state)
 	s.Require().NoError(err)
-	s.Nil(result.HighestBidAmount())
-}
 
-func (s *AuctionMapperTestSuite) TestToEntity_WithHighestBidAmount_MapsCorrectly() {
-	// Arrange
-	now := time.Now().UTC()
-	highestBidAmount := uint64(5000)
-	state, _ := enum.NewAuctionStateEnum("active")
 	auction, err := model.RestoreAuctionModel(
 		1,
 		10,
 		&now,
 		now.Add(24*time.Hour),
-		state,
-		&highestBidAmount,
-		5,
+		stateEnum,
+		highestBidAmount,
+		version,
 		now,
 		now,
 	)
 	s.Require().NoError(err)
-
-	// Act
-	result := s.sut.ToEntity(auction)
-
-	// Assert
-	s.NotNil(result.HighestBidAmountInCents)
-	s.Equal(highestBidAmount, *result.HighestBidAmountInCents)
+	return auction
 }

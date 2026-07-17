@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/cristiano-pacheco/go-online-auction/cmd"
-	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/config"
+	"auction/cmd"
+	"auction/internal/shared/modules/config"
 )
 
 func main() {

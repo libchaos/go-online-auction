@@ -1,8 +1,8 @@
 package database
 
 import (
-	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/config"
-	"github.com/cristiano-pacheco/go-online-auction/pkg/database"
+	"auction/internal/shared/modules/config"
+	"auction/pkg/database"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

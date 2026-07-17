@@ -4,12 +4,12 @@ import (
 	"net/http"
 	"strconv"
 
-	httperrs "github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/infra/http/errs"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/infra/websocket"
-	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/logger"
-	"github.com/cristiano-pacheco/go-online-auction/internal/shared/sdk/http/request"
-	"github.com/cristiano-pacheco/go-online-auction/internal/shared/sdk/http/response"
-	"github.com/cristiano-pacheco/go-online-auction/pkg/httpserver"
+	httperrs "auction/internal/modules/auction/infra/http/errs"
+	"auction/internal/modules/auction/infra/websocket"
+	"auction/internal/shared/modules/logger"
+	"auction/internal/shared/sdk/http/request"
+	"auction/internal/shared/sdk/http/response"
+	"auction/pkg/httpserver"
 )
 
 type WebsocketHandler struct {

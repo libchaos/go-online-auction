@@ -4,38 +4,29 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/application/command"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/enum"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/model"
-	"github.com/cristiano-pacheco/go-online-auction/tests/mocks"
+	"auction/internal/modules/auction/application/command"
+	"auction/internal/modules/auction/domain/errs"
+	"auction/internal/modules/auction/ports"
+	"auction/tests/mocks"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )
 
 type PlaceBidCommandTestSuite struct {
 	suite.Suite
-	sut                          *command.PlaceBidCommand
-	uowFactoryMock               *mocks.MockAuctionUnitOfWorkFactory
-	uowMock                      *mocks.MockAuctionUnitOfWork
-	auctionRepositoryMock        *mocks.MockAuctionRepository
-	bidRepositoryMock            *mocks.MockBidRepository
-	bidPlacedEventDispatcherMock *mocks.MockBidPlacedEventDispatcher
-	loggerMock                   *mocks.MockLogger
+	sut                     *command.PlaceBidCommand
+	bidCommandPublisherMock *mocks.MockBidCommandPublisher
+	loggerMock              *mocks.MockLogger
 }
 
 func (s *PlaceBidCommandTestSuite) SetupTest() {
-	s.uowFactoryMock = mocks.NewMockAuctionUnitOfWorkFactory(s.T())
-	s.uowMock = mocks.NewMockAuctionUnitOfWork(s.T())
-	s.auctionRepositoryMock = mocks.NewMockAuctionRepository(s.T())
-	s.bidRepositoryMock = mocks.NewMockBidRepository(s.T())
-	s.bidPlacedEventDispatcherMock = mocks.NewMockBidPlacedEventDispatcher(s.T())
+	s.bidCommandPublisherMock = mocks.NewMockBidCommandPublisher(s.T())
 	s.loggerMock = mocks.NewMockLogger(s.T())
 
 	s.sut = command.NewPlaceBidCommand(
-		s.uowFactoryMock,
-		s.bidPlacedEventDispatcherMock,
+		s.bidCommandPublisherMock,
 		s.loggerMock,
 	)
 }
@@ -44,370 +35,104 @@ func TestPlaceBidCommandSuite(t *testing.T) {
 	suite.Run(t, new(PlaceBidCommandTestSuite))
 }
 
-func (s *PlaceBidCommandTestSuite) TestExecute_SuccessfulBidPlacement_ReturnsOutput() {
+func (s *PlaceBidCommandTestSuite) TestExecute_WithProvidedIdempotencyKey_PublishesAndReturnsAccepted() {
 	// Arrange
 	ctx := context.Background()
-	auctionID := uint64(1)
-	userID := uint64(100)
-	amountInCents := uint64(5000)
-	bidID := uint64(10)
-
 	input := command.PlaceBidCommandInput{
-		AuctionID:     auctionID,
-		UserID:        userID,
-		AmountInCents: amountInCents,
+		AuctionID:      1,
+		UserID:         100,
+		AmountInCents:  5000,
+		IdempotencyKey: "client-key-123",
 	}
 
-	activeState, _ := enum.NewAuctionStateEnum(enum.EnumAuctionStateActive)
-	futureTime := time.Now().Add(24 * time.Hour)
-	auction, _ := model.RestoreAuctionModel(
-		auctionID,
-		1,
-		nil,
-		futureTime,
-		activeState,
-		nil,
-		1,
-		time.Now(),
-		time.Now(),
-	)
-	_ = auction.Start()
-
-	money := model.NewMoneyModel(amountInCents)
-	persistedBid, _ := model.RestoreBidModel(
-		bidID,
-		auctionID,
-		userID,
-		money,
-		time.Now(),
-		time.Now(),
-	)
-
-	s.uowFactoryMock.On("Begin", mock.Anything).Return(s.uowMock, nil)
-	s.uowMock.On("Rollback", mock.Anything).Return(nil)
-	s.uowMock.On("AuctionRepository").Return(s.auctionRepositoryMock)
-	s.uowMock.On("BidRepository").Return(s.bidRepositoryMock)
-	s.auctionRepositoryMock.On("FindByID", mock.Anything, auctionID).Return(auction, nil)
-	s.bidRepositoryMock.On("Create", mock.Anything, mock.AnythingOfType("model.BidModel")).
-		Return(persistedBid, nil)
-	s.auctionRepositoryMock.On("Update", mock.Anything, mock.AnythingOfType("model.AuctionModel")).
-		Return(nil)
-	s.uowMock.On("Complete", mock.Anything).Return(nil)
-	s.bidPlacedEventDispatcherMock.On("Dispatch", mock.Anything, mock.Anything).Return(nil)
+	var capturedCommand ports.BidCommand
+	s.bidCommandPublisherMock.
+		On("Publish", mock.Anything, mock.MatchedBy(func(cmd ports.BidCommand) bool {
+			capturedCommand = cmd
+			return true
+		})).
+		Return(ports.BidCommandAck{IdempotencyKey: "client-key-123"}, nil)
 
 	// Act
 	result, err := s.sut.Execute(ctx, input)
 
 	// Assert
 	s.Require().NoError(err)
-	s.Equal(bidID, result.ID)
-	s.Equal(auctionID, result.AuctionID)
-	s.Equal(userID, result.UserID)
-	s.Equal(amountInCents, result.AmountInCents)
+	s.Equal("client-key-123", result.IdempotencyKey)
+	s.Equal("accepted", result.Status)
+	s.Equal(input.AuctionID, capturedCommand.AuctionID)
+	s.Equal(input.UserID, capturedCommand.UserID)
+	s.Equal(input.AmountInCents, capturedCommand.AmountInCents)
+	s.Equal("client-key-123", capturedCommand.IdempotencyKey)
+	s.False(capturedCommand.IssuedAt.IsZero())
 }
 
-func (s *PlaceBidCommandTestSuite) TestExecute_BeginUnitOfWorkFails_ReturnsError() {
+func (s *PlaceBidCommandTestSuite) TestExecute_WithoutIdempotencyKey_GeneratesKey() {
 	// Arrange
 	ctx := context.Background()
 	input := command.PlaceBidCommandInput{
-		AuctionID:     1,
-		UserID:        100,
-		AmountInCents: 5000,
+		AuctionID:     2,
+		UserID:        200,
+		AmountInCents: 7500,
 	}
 
-	expectedErr := errors.New("begin uow error")
-	s.uowFactoryMock.On("Begin", mock.Anything).Return(nil, expectedErr)
-	s.loggerMock.On("Error").Return(nil)
+	var capturedCommand ports.BidCommand
+	s.bidCommandPublisherMock.
+		On("Publish", mock.Anything, mock.MatchedBy(func(cmd ports.BidCommand) bool {
+			capturedCommand = cmd
+			return true
+		})).
+		Return(ports.BidCommandAck{IdempotencyKey: "generated"}, nil).
+		Run(func(args mock.Arguments) {
+			cmd := args.Get(1).(ports.BidCommand)
+			s.Require().NotEmpty(cmd.IdempotencyKey)
+		})
 
 	// Act
-	_, err := s.sut.Execute(ctx, input)
+	result, err := s.sut.Execute(ctx, input)
 
 	// Assert
-	s.Require().ErrorIs(err, expectedErr)
+	s.Require().NoError(err)
+	s.Equal("accepted", result.Status)
+	s.NotEmpty(capturedCommand.IdempotencyKey)
 }
 
-func (s *PlaceBidCommandTestSuite) TestExecute_FindAuctionFails_ReturnsError() {
+func (s *PlaceBidCommandTestSuite) TestExecute_ZeroAmount_ReturnsError() {
 	// Arrange
 	ctx := context.Background()
-	auctionID := uint64(1)
 	input := command.PlaceBidCommandInput{
-		AuctionID:     auctionID,
-		UserID:        100,
-		AmountInCents: 5000,
+		AuctionID:     3,
+		UserID:        300,
+		AmountInCents: 0,
 	}
 
-	expectedErr := errors.New("auction not found")
-	s.uowFactoryMock.On("Begin", mock.Anything).Return(s.uowMock, nil)
-	s.uowMock.On("Rollback", mock.Anything).Return(nil)
-	s.uowMock.On("AuctionRepository").Return(s.auctionRepositoryMock)
-	s.auctionRepositoryMock.On("FindByID", mock.Anything, auctionID).Return(model.AuctionModel{}, expectedErr)
-	s.loggerMock.On("Error").Return(nil)
-
 	// Act
-	_, err := s.sut.Execute(ctx, input)
+	result, err := s.sut.Execute(ctx, input)
 
 	// Assert
-	s.Require().ErrorIs(err, expectedErr)
+	s.Require().ErrorIs(err, errs.ErrFirstBidMustBePositive)
+	s.Empty(result.IdempotencyKey)
 }
 
-func (s *PlaceBidCommandTestSuite) TestExecute_PlaceBidOnAuctionFails_ReturnsError() {
+func (s *PlaceBidCommandTestSuite) TestExecute_PublishFails_ReturnsError() {
 	// Arrange
 	ctx := context.Background()
-	auctionID := uint64(1)
-	userID := uint64(100)
-	amountInCents := uint64(5000)
-
 	input := command.PlaceBidCommandInput{
-		AuctionID:     auctionID,
-		UserID:        userID,
-		AmountInCents: amountInCents,
+		AuctionID:     4,
+		UserID:        400,
+		AmountInCents: 9000,
 	}
 
-	draftState, _ := enum.NewAuctionStateEnum(enum.EnumAuctionStateDraft)
-	futureTime := time.Now().Add(24 * time.Hour)
-	auction, _ := model.RestoreAuctionModel(
-		auctionID,
-		1,
-		nil,
-		futureTime,
-		draftState,
-		nil,
-		1,
-		time.Now(),
-		time.Now(),
-	)
-
-	s.uowFactoryMock.On("Begin", mock.Anything).Return(s.uowMock, nil)
-	s.uowMock.On("Rollback", mock.Anything).Return(nil)
-	s.uowMock.On("AuctionRepository").Return(s.auctionRepositoryMock)
-	s.auctionRepositoryMock.On("FindByID", mock.Anything, auctionID).Return(auction, nil)
-	s.loggerMock.On("Error").Return(nil)
+	publishErr := errors.New("publish failed")
+	s.bidCommandPublisherMock.On("Publish", mock.Anything, mock.Anything).
+		Return(ports.BidCommandAck{}, publishErr)
+	nopLogger := zerolog.Nop()
+	s.loggerMock.On("Error").Return(nopLogger.Error())
 
 	// Act
-	_, err := s.sut.Execute(ctx, input)
+	result, err := s.sut.Execute(ctx, input)
 
 	// Assert
-	s.Require().Error(err)
-}
-
-func (s *PlaceBidCommandTestSuite) TestExecute_CreateBidFails_ReturnsError() {
-	// Arrange
-	ctx := context.Background()
-	auctionID := uint64(1)
-	userID := uint64(100)
-	amountInCents := uint64(5000)
-
-	input := command.PlaceBidCommandInput{
-		AuctionID:     auctionID,
-		UserID:        userID,
-		AmountInCents: amountInCents,
-	}
-
-	activeState, _ := enum.NewAuctionStateEnum(enum.EnumAuctionStateActive)
-	futureTime := time.Now().Add(24 * time.Hour)
-	auction, _ := model.RestoreAuctionModel(
-		auctionID,
-		1,
-		nil,
-		futureTime,
-		activeState,
-		nil,
-		1,
-		time.Now(),
-		time.Now(),
-	)
-	_ = auction.Start()
-
-	expectedErr := errors.New("create bid error")
-	s.uowFactoryMock.On("Begin", mock.Anything).Return(s.uowMock, nil)
-	s.uowMock.On("Rollback", mock.Anything).Return(nil)
-	s.uowMock.On("AuctionRepository").Return(s.auctionRepositoryMock)
-	s.uowMock.On("BidRepository").Return(s.bidRepositoryMock)
-	s.auctionRepositoryMock.On("FindByID", mock.Anything, auctionID).Return(auction, nil)
-	s.bidRepositoryMock.On("Create", mock.Anything, mock.AnythingOfType("model.BidModel")).
-		Return(model.BidModel{}, expectedErr)
-	s.loggerMock.On("Error").Return(nil)
-
-	// Act
-	_, err := s.sut.Execute(ctx, input)
-
-	// Assert
-	s.Require().ErrorIs(err, expectedErr)
-}
-
-func (s *PlaceBidCommandTestSuite) TestExecute_UpdateAuctionFails_ReturnsError() {
-	// Arrange
-	ctx := context.Background()
-	auctionID := uint64(1)
-	userID := uint64(100)
-	amountInCents := uint64(5000)
-	bidID := uint64(10)
-
-	input := command.PlaceBidCommandInput{
-		AuctionID:     auctionID,
-		UserID:        userID,
-		AmountInCents: amountInCents,
-	}
-
-	activeState, _ := enum.NewAuctionStateEnum(enum.EnumAuctionStateActive)
-	futureTime := time.Now().Add(24 * time.Hour)
-	auction, _ := model.RestoreAuctionModel(
-		auctionID,
-		1,
-		nil,
-		futureTime,
-		activeState,
-		nil,
-		1,
-		time.Now(),
-		time.Now(),
-	)
-	_ = auction.Start()
-
-	money := model.NewMoneyModel(amountInCents)
-	persistedBid, _ := model.RestoreBidModel(
-		bidID,
-		auctionID,
-		userID,
-		money,
-		time.Now(),
-		time.Now(),
-	)
-
-	expectedErr := errors.New("update auction error")
-	s.uowFactoryMock.On("Begin", mock.Anything).Return(s.uowMock, nil)
-	s.uowMock.On("Rollback", mock.Anything).Return(nil)
-	s.uowMock.On("AuctionRepository").Return(s.auctionRepositoryMock)
-	s.uowMock.On("BidRepository").Return(s.bidRepositoryMock)
-	s.auctionRepositoryMock.On("FindByID", mock.Anything, auctionID).Return(auction, nil)
-	s.bidRepositoryMock.On("Create", mock.Anything, mock.AnythingOfType("model.BidModel")).
-		Return(persistedBid, nil)
-	s.auctionRepositoryMock.On("Update", mock.Anything, mock.AnythingOfType("model.AuctionModel")).
-		Return(expectedErr)
-	s.loggerMock.On("Error").Return(nil)
-
-	// Act
-	_, err := s.sut.Execute(ctx, input)
-
-	// Assert
-	s.Require().ErrorIs(err, expectedErr)
-}
-
-func (s *PlaceBidCommandTestSuite) TestExecute_CompleteUnitOfWorkFails_ReturnsError() {
-	// Arrange
-	ctx := context.Background()
-	auctionID := uint64(1)
-	userID := uint64(100)
-	amountInCents := uint64(5000)
-	bidID := uint64(10)
-
-	input := command.PlaceBidCommandInput{
-		AuctionID:     auctionID,
-		UserID:        userID,
-		AmountInCents: amountInCents,
-	}
-
-	activeState, _ := enum.NewAuctionStateEnum(enum.EnumAuctionStateActive)
-	futureTime := time.Now().Add(24 * time.Hour)
-	auction, _ := model.RestoreAuctionModel(
-		auctionID,
-		1,
-		nil,
-		futureTime,
-		activeState,
-		nil,
-		1,
-		time.Now(),
-		time.Now(),
-	)
-	_ = auction.Start()
-
-	money := model.NewMoneyModel(amountInCents)
-	persistedBid, _ := model.RestoreBidModel(
-		bidID,
-		auctionID,
-		userID,
-		money,
-		time.Now(),
-		time.Now(),
-	)
-
-	expectedErr := errors.New("complete uow error")
-	s.uowFactoryMock.On("Begin", mock.Anything).Return(s.uowMock, nil)
-	s.uowMock.On("Rollback", mock.Anything).Return(nil)
-	s.uowMock.On("AuctionRepository").Return(s.auctionRepositoryMock)
-	s.uowMock.On("BidRepository").Return(s.bidRepositoryMock)
-	s.auctionRepositoryMock.On("FindByID", mock.Anything, auctionID).Return(auction, nil)
-	s.bidRepositoryMock.On("Create", mock.Anything, mock.AnythingOfType("model.BidModel")).
-		Return(persistedBid, nil)
-	s.auctionRepositoryMock.On("Update", mock.Anything, mock.AnythingOfType("model.AuctionModel")).
-		Return(nil)
-	s.uowMock.On("Complete", mock.Anything).Return(expectedErr)
-	s.loggerMock.On("Error").Return(nil)
-
-	// Act
-	_, err := s.sut.Execute(ctx, input)
-
-	// Assert
-	s.Require().ErrorIs(err, expectedErr)
-}
-
-func (s *PlaceBidCommandTestSuite) TestExecute_DispatchEventFails_ReturnsError() {
-	// Arrange
-	ctx := context.Background()
-	auctionID := uint64(1)
-	userID := uint64(100)
-	amountInCents := uint64(5000)
-	bidID := uint64(10)
-
-	input := command.PlaceBidCommandInput{
-		AuctionID:     auctionID,
-		UserID:        userID,
-		AmountInCents: amountInCents,
-	}
-
-	activeState, _ := enum.NewAuctionStateEnum(enum.EnumAuctionStateActive)
-	futureTime := time.Now().Add(24 * time.Hour)
-	auction, _ := model.RestoreAuctionModel(
-		auctionID,
-		1,
-		nil,
-		futureTime,
-		activeState,
-		nil,
-		1,
-		time.Now(),
-		time.Now(),
-	)
-	_ = auction.Start()
-
-	money := model.NewMoneyModel(amountInCents)
-	persistedBid, _ := model.RestoreBidModel(
-		bidID,
-		auctionID,
-		userID,
-		money,
-		time.Now(),
-		time.Now(),
-	)
-
-	expectedErr := errors.New("dispatch event error")
-	s.uowFactoryMock.On("Begin", mock.Anything).Return(s.uowMock, nil)
-	s.uowMock.On("Rollback", mock.Anything).Return(nil)
-	s.uowMock.On("AuctionRepository").Return(s.auctionRepositoryMock)
-	s.uowMock.On("BidRepository").Return(s.bidRepositoryMock)
-	s.auctionRepositoryMock.On("FindByID", mock.Anything, auctionID).Return(auction, nil)
-	s.bidRepositoryMock.On("Create", mock.Anything, mock.AnythingOfType("model.BidModel")).
-		Return(persistedBid, nil)
-	s.auctionRepositoryMock.On("Update", mock.Anything, mock.AnythingOfType("model.AuctionModel")).
-		Return(nil)
-	s.uowMock.On("Complete", mock.Anything).Return(nil)
-	s.bidPlacedEventDispatcherMock.On("Dispatch", mock.Anything, mock.Anything).Return(expectedErr)
-	s.loggerMock.On("Error").Return(nil)
-
-	// Act
-	_, err := s.sut.Execute(ctx, input)
-
-	// Assert
-	s.Require().ErrorIs(err, expectedErr)
+	s.Require().ErrorIs(err, publishErr)
+	s.Empty(result.IdempotencyKey)
 }

@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/enum"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/errs"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/model"
+	"auction/internal/modules/auction/domain/enum"
+	"auction/internal/modules/auction/domain/errs"
+	"auction/internal/modules/auction/domain/model"
 	"github.com/stretchr/testify/require"
 )
 
@@ -50,6 +50,76 @@ func TestNewAuctionModel(t *testing.T) {
 
 		// Assert
 		require.ErrorIs(t, err, errs.ErrEndTimeRequired)
+	})
+}
+
+func TestNewAuctionModelWithMode_ScheduledStartTime(t *testing.T) {
+	newAuction := func(startTime *time.Time, endTime time.Time) (model.AuctionModel, error) {
+		tradingMode, err := enum.NewTradingModeEnum(enum.EnumTradingModeEnglish)
+		require.NoError(t, err)
+		return model.NewAuctionModelWithMode(
+			100,
+			endTime,
+			tradingMode,
+			nil,
+			nil,
+			nil,
+			false,
+			300,
+			startTime,
+		)
+	}
+
+	t.Run("valid future start time before end time is stored in UTC", func(t *testing.T) {
+		// Arrange
+		startTime := time.Now().Add(time.Hour)
+		endTime := time.Now().UTC().Add(24 * time.Hour)
+
+		// Act
+		auction, err := newAuction(&startTime, endTime)
+
+		// Assert
+		require.NoError(t, err)
+		require.NotNil(t, auction.StartTime())
+		require.Equal(t, startTime.UTC(), *auction.StartTime())
+		state := auction.State()
+		require.Equal(t, enum.EnumAuctionStateDraft, state.String())
+	})
+
+	t.Run("nil start time keeps auction manual", func(t *testing.T) {
+		// Arrange
+		endTime := time.Now().UTC().Add(24 * time.Hour)
+
+		// Act
+		auction, err := newAuction(nil, endTime)
+
+		// Assert
+		require.NoError(t, err)
+		require.Nil(t, auction.StartTime())
+	})
+
+	t.Run("returns error when start time is in the past", func(t *testing.T) {
+		// Arrange
+		startTime := time.Now().UTC().Add(-time.Hour)
+		endTime := time.Now().UTC().Add(24 * time.Hour)
+
+		// Act
+		_, err := newAuction(&startTime, endTime)
+
+		// Assert
+		require.ErrorIs(t, err, errs.ErrStartTimeMustBeInFuture)
+	})
+
+	t.Run("returns error when start time is not before end time", func(t *testing.T) {
+		// Arrange
+		endTime := time.Now().UTC().Add(time.Hour)
+		startTime := endTime.Add(time.Minute)
+
+		// Act
+		_, err := newAuction(&startTime, endTime)
+
+		// Assert
+		require.ErrorIs(t, err, errs.ErrStartTimeMustBeBeforeEndTime)
 	})
 }
 
@@ -323,7 +393,7 @@ func TestAuctionModel_Close(t *testing.T) {
 		_ = auction.Start()
 
 		// Act
-		err := auction.Close()
+		err := auction.Close([]model.BidModel{})
 
 		// Assert
 		require.NoError(t, err)
@@ -339,7 +409,7 @@ func TestAuctionModel_Close(t *testing.T) {
 		auction, _ := model.NewAuctionModel(listingID, endTime)
 
 		// Act
-		err := auction.Close()
+		err := auction.Close([]model.BidModel{})
 
 		// Assert
 		require.ErrorIs(t, err, errs.ErrAuctionCanOnlyCloseFromActive)
@@ -385,7 +455,7 @@ func TestAuctionModel_Cancel(t *testing.T) {
 		endTime := time.Now().UTC().Add(24 * time.Hour)
 		auction, _ := model.NewAuctionModel(listingID, endTime)
 		_ = auction.Start()
-		_ = auction.Close()
+		_ = auction.Close([]model.BidModel{})
 
 		// Act
 		err := auction.Cancel()
@@ -416,7 +486,7 @@ func TestAuctionModel_CheckAndCloseIfExpired(t *testing.T) {
 		)
 
 		// Act
-		closed, err := auction.CheckAndCloseIfExpired()
+		closed, err := auction.CheckAndCloseIfExpired([]model.BidModel{})
 
 		// Assert
 		require.NoError(t, err)
@@ -433,7 +503,7 @@ func TestAuctionModel_CheckAndCloseIfExpired(t *testing.T) {
 		_ = auction.Start()
 
 		// Act
-		closed, err := auction.CheckAndCloseIfExpired()
+		closed, err := auction.CheckAndCloseIfExpired([]model.BidModel{})
 
 		// Assert
 		require.NoError(t, err)
@@ -449,7 +519,7 @@ func TestAuctionModel_CheckAndCloseIfExpired(t *testing.T) {
 		auction, _ := model.NewAuctionModel(listingID, endTime)
 
 		// Act
-		closed, err := auction.CheckAndCloseIfExpired()
+		closed, err := auction.CheckAndCloseIfExpired([]model.BidModel{})
 
 		// Assert
 		require.NoError(t, err)

@@ -5,8 +5,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/ports"
-	shareduow "github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/uow"
+	"auction/internal/modules/auction/ports"
+	shareduow "auction/internal/shared/modules/uow"
 )
 
 var _ ports.AuctionUnitOfWork = (*AuctionUnitOfWork)(nil)
@@ -16,6 +16,7 @@ type AuctionUnitOfWork struct {
 	tx                pgx.Tx
 	auctionRepository ports.AuctionRepository
 	bidRepository     ports.BidRepository
+	outboxRepository  ports.OutboxRepository
 	completed         bool
 }
 
@@ -27,6 +28,11 @@ func (uow *AuctionUnitOfWork) AuctionRepository() ports.AuctionRepository {
 // BidRepository returns the bid repository bound to this unit of work
 func (uow *AuctionUnitOfWork) BidRepository() ports.BidRepository {
 	return uow.bidRepository
+}
+
+// OutboxRepository returns the outbox repository bound to this unit of work
+func (uow *AuctionUnitOfWork) OutboxRepository() ports.OutboxRepository {
+	return uow.outboxRepository
 }
 
 // Complete commits the transaction

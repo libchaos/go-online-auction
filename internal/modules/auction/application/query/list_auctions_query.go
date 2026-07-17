@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/enum"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/ports"
-	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/logger"
+	"auction/internal/modules/auction/domain/enum"
+	"auction/internal/modules/auction/ports"
+	"auction/internal/shared/modules/logger"
 )
 
 const (
@@ -31,10 +31,18 @@ type AuctionSummaryOutput struct {
 	ID                      uint64
 	ListingID               uint64
 	State                   string
+	TradingMode             string
 	EndTime                 time.Time
 	CreatedAt               time.Time
 	StartTime               *time.Time
+	StartingPrice           *uint64
+	ReservePrice            *uint64
+	CurrentPrice            *uint64
 	HighestBidAmountInCents *uint64
+	WinnerUserID            *uint64
+	WinningBidAmountInCents *uint64
+	AntiSnipeEnabled        bool
+	ExtensionWindowSec      int64
 }
 
 type ListAuctionsQuery struct {
@@ -94,13 +102,22 @@ func (q *ListAuctionsQuery) Execute(
 	auctionOutputs := make([]AuctionSummaryOutput, 0, len(auctions))
 	for _, auction := range auctions {
 		state := auction.State()
+		tradingMode := auction.TradingMode()
 		auctionOutputs = append(auctionOutputs, AuctionSummaryOutput{
 			ID:                      auction.ID(),
 			ListingID:               auction.ListingID(),
 			State:                   state.String(),
+			TradingMode:             tradingMode.String(),
 			StartTime:               auction.StartTime(),
 			EndTime:                 auction.EndTime(),
+			StartingPrice:           auction.StartingPrice(),
+			ReservePrice:            auction.ReservePrice(),
+			CurrentPrice:            auction.CurrentPrice(),
 			HighestBidAmountInCents: auction.HighestBidAmount(),
+			WinnerUserID:            auction.WinnerUserID(),
+			WinningBidAmountInCents: auction.WinningBidAmount(),
+			AntiSnipeEnabled:        auction.AntiSnipeEnabled(),
+			ExtensionWindowSec:      auction.ExtensionWindowSec(),
 			CreatedAt:               auction.CreatedAt(),
 		})
 	}

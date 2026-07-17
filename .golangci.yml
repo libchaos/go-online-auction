@@ -380,3 +380,12 @@ linters:
       # Ignore all linters for test files
       - path: '_test\.go'
         text: '.*'
+      # Ignore all linters for sqlc generated code
+      - path: 'internal/modules/.*/infra/sqlcgen/.*'
+        text: '.*'
+      # int64 <-> uint64 boundary conversions between sqlc rows (BIGINT) and
+      # domain models (uint64) are confined to the mapper/repository/outbox
+      # layer; values come from BIGSERIAL/positive amounts so overflow cannot occur.
+      - path: 'internal/modules/.*/infra/(mapper|repository|outbox)/.*'
+        text: 'G115'
+        linters: [ gosec ]

@@ -6,35 +6,39 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/application/command"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/enum"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/model"
-	"github.com/cristiano-pacheco/go-online-auction/pkg/logger"
-	"github.com/cristiano-pacheco/go-online-auction/tests/mocks"
+	"auction/internal/modules/auction/application/command"
+	"auction/internal/modules/auction/domain/enum"
+	"auction/internal/modules/auction/domain/model"
+	"auction/pkg/logger"
+	"auction/tests/mocks"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )
 
 type CloseAuctionCommandTestSuite struct {
 	suite.Suite
-	sut                         *command.CloseAuctionCommand
-	uowFactoryMock              *mocks.MockAuctionUnitOfWorkFactory
-	uowMock                     *mocks.MockAuctionUnitOfWork
-	auctionRepoMock             *mocks.MockAuctionRepository
-	auctionEndedEventDispatcher *mocks.MockAuctionEndedEventDispatcher
+	sut             *command.CloseAuctionCommand
+	uowFactoryMock  *mocks.MockAuctionUnitOfWorkFactory
+	uowMock         *mocks.MockAuctionUnitOfWork
+	auctionRepoMock *mocks.MockAuctionRepository
+	outboxRepoMock  *mocks.MockOutboxRepository
+	bidRepoMock     *mocks.MockBidRepository
 }
 
 func (s *CloseAuctionCommandTestSuite) SetupTest() {
 	s.uowFactoryMock = mocks.NewMockAuctionUnitOfWorkFactory(s.T())
 	s.uowMock = mocks.NewMockAuctionUnitOfWork(s.T())
 	s.auctionRepoMock = mocks.NewMockAuctionRepository(s.T())
-	s.auctionEndedEventDispatcher = mocks.NewMockAuctionEndedEventDispatcher(s.T())
+	s.outboxRepoMock = mocks.NewMockOutboxRepository(s.T())
+	s.bidRepoMock = mocks.NewMockBidRepository(s.T())
+	s.uowMock.On("BidRepository").Return(s.bidRepoMock).Maybe()
+	s.uowMock.On("OutboxRepository").Return(s.outboxRepoMock).Maybe()
+	s.bidRepoMock.On("FindByAuctionID", mock.Anything, mock.Anything).Return([]model.BidModel{}, nil).Maybe()
 
 	log := logger.New(logger.Config{LogLevel: logger.MustLogLevel(logger.LogLevelFatal)})
 
 	s.sut = command.NewCloseAuctionCommand(
 		s.uowFactoryMock,
-		s.auctionEndedEventDispatcher,
 		log,
 	)
 }
@@ -75,8 +79,7 @@ func (s *CloseAuctionCommandTestSuite) TestExecute_SuccessfullyClosesAuctionWith
 	s.auctionRepoMock.On("Update", mock.Anything, mock.Anything).Return(nil)
 	s.uowMock.On("Complete", mock.Anything).Return(nil)
 	s.uowMock.On("Rollback", mock.Anything).Return(nil)
-	s.auctionEndedEventDispatcher.On("Dispatch", mock.Anything, mock.AnythingOfType("event.AuctionEndedEvent")).
-		Return(nil)
+	s.outboxRepoMock.On("Save", mock.Anything, mock.AnythingOfType("ports.OutboxEvent")).Return(nil)
 
 	// Act
 	output, err := s.sut.Execute(ctx, input)
@@ -119,8 +122,7 @@ func (s *CloseAuctionCommandTestSuite) TestExecute_SuccessfullyClosesAuctionWith
 	s.auctionRepoMock.On("Update", mock.Anything, mock.Anything).Return(nil)
 	s.uowMock.On("Complete", mock.Anything).Return(nil)
 	s.uowMock.On("Rollback", mock.Anything).Return(nil)
-	s.auctionEndedEventDispatcher.On("Dispatch", mock.Anything, mock.AnythingOfType("event.AuctionEndedEvent")).
-		Return(nil)
+	s.outboxRepoMock.On("Save", mock.Anything, mock.AnythingOfType("ports.OutboxEvent")).Return(nil)
 
 	// Act
 	output, err := s.sut.Execute(ctx, input)
@@ -282,6 +284,7 @@ func (s *CloseAuctionCommandTestSuite) TestExecute_FailsWhenCompleteUnitOfWorkFa
 	s.uowMock.On("AuctionRepository").Return(s.auctionRepoMock)
 	s.auctionRepoMock.On("FindByIDForUpdate", mock.Anything, auctionID).Return(auctionMock, nil)
 	s.auctionRepoMock.On("Update", mock.Anything, mock.Anything).Return(nil)
+	s.outboxRepoMock.On("Save", mock.Anything, mock.AnythingOfType("ports.OutboxEvent")).Return(nil)
 	s.uowMock.On("Complete", mock.Anything).Return(expectedErr)
 	s.uowMock.On("Rollback", mock.Anything).Return(nil)
 
@@ -293,13 +296,13 @@ func (s *CloseAuctionCommandTestSuite) TestExecute_FailsWhenCompleteUnitOfWorkFa
 	s.Equal(command.CloseAuctionCommandOutput{}, output)
 }
 
-func (s *CloseAuctionCommandTestSuite) TestExecute_FailsWhenDispatchEventFails() {
+func (s *CloseAuctionCommandTestSuite) TestExecute_FailsWhenSaveOutboxFails() {
 	// Arrange
 	ctx := context.Background()
 	auctionID := uint64(1)
 	listingID := uint64(100)
 	now := time.Now()
-	expectedErr := errors.New("failed to dispatch event")
+	expectedErr := errors.New("failed to save outbox event")
 
 	input := command.CloseAuctionCommandInput{
 		AuctionID: auctionID,
@@ -323,15 +326,15 @@ func (s *CloseAuctionCommandTestSuite) TestExecute_FailsWhenDispatchEventFails()
 	s.uowMock.On("AuctionRepository").Return(s.auctionRepoMock)
 	s.auctionRepoMock.On("FindByIDForUpdate", mock.Anything, auctionID).Return(auctionMock, nil)
 	s.auctionRepoMock.On("Update", mock.Anything, mock.Anything).Return(nil)
-	s.uowMock.On("Complete", mock.Anything).Return(nil)
 	s.uowMock.On("Rollback", mock.Anything).Return(nil)
-	s.auctionEndedEventDispatcher.On("Dispatch", mock.Anything, mock.AnythingOfType("event.AuctionEndedEvent")).
+	s.outboxRepoMock.On("Save", mock.Anything, mock.AnythingOfType("ports.OutboxEvent")).
 		Return(expectedErr)
 
 	// Act
 	output, err := s.sut.Execute(ctx, input)
 
-	// Assert
+	// Assert: transaction is rolled back, the event is never delivered
 	s.Require().ErrorIs(err, expectedErr)
 	s.Equal(command.CloseAuctionCommandOutput{}, output)
+	s.uowMock.AssertNotCalled(s.T(), "Complete", mock.Anything)
 }

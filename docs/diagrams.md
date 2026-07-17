@@ -9,11 +9,11 @@ Person(user, "User", "A person who creates auctions and places bids")
 System(auctionSystem, "Go Online Auction System", "Allows users to create auctions, place bids, and receive real-time updates")
 
 SystemDb_Ext(postgres, "PostgreSQL Database", "Stores auctions, bids, and related data")
-SystemDb_Ext(redis, "Redis", "Pub/Sub for real-time event distribution")
+SystemDb_Ext(nats, "NATS (JetStream)", "Command stream + event bus for reliable delivery")
 
 Rel(user, auctionSystem, "Creates auctions, places bids, views real-time updates", "HTTPS, WebSocket")
 Rel(auctionSystem, postgres, "Reads from and writes to", "SQL/TCP")
-Rel(auctionSystem, redis, "Publishes and subscribes to events", "Redis Protocol")
+Rel(auctionSystem, nats, "Publishes commands/events and consumes them", "NATS Protocol")
 
 @enduml
 ```
@@ -33,7 +33,7 @@ System_Boundary(auctionSystem, "Go Online Auction System") {
 }
 
 ContainerDb_Ext(postgres, "Database", "PostgreSQL", "Stores auctions and bids with strong consistency")
-ContainerDb_Ext(redis, "Message Broker", "Redis Pub/Sub", "Distributes domain events for real-time updates")
+ContainerDb_Ext(nats, "Message Broker", "NATS JetStream", "Persists bid commands and distributes domain events")
 
 Rel(user, spa, "Views auctions, places bids", "HTTPS")
 Rel(user, websocket, "Subscribes to auction events", "WebSocket")
@@ -42,9 +42,9 @@ Rel(spa, api, "Makes API calls", "JSON/HTTPS")
 Rel(spa, websocket, "Establishes WebSocket connection", "WebSocket")
 
 Rel(api, postgres, "Reads/Writes data", "pgx/SQL")
-Rel(api, redis, "Publishes domain events", "go-redis")
+Rel(api, nats, "Publishes bid commands and domain events", "nats.go")
 
-Rel(websocket, redis, "Subscribes to events", "go-redis")
+Rel(websocket, nats, "Consumes events (durable consumer)", "nats.go")
 
 @enduml
 ```
@@ -72,7 +72,7 @@ Container_Boundary(api, "Backend API") {
 }
 
 ContainerDb_Ext(postgres, "Database", "PostgreSQL", "Stores data")
-ContainerDb_Ext(redis, "Message Broker", "Redis", "Event distribution")
+ContainerDb_Ext(nats, "Message Broker", "NATS JetStream", "Command stream + event distribution")
 
 Rel(spa, httpHandlers, "Makes API calls", "JSON/HTTPS")
 
@@ -87,9 +87,9 @@ Rel(queries, ports, "Uses", "")
 Rel(ports, adapters, "Implemented by", "")
 
 Rel(adapters, postgres, "Reads/Writes", "pgx")
-Rel(adapters, redis, "Publishes events", "go-redis")
+Rel(adapters, nats, "Publishes commands/events", "nats.go")
 
-Rel(redis, websocket, "Pushes events to", "go-redis")
+Rel(nats, websocket, "Delivers events to", "nats.go")
 
 @enduml
 ```

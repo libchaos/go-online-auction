@@ -1,8 +1,8 @@
 package logger
 
 import (
-	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/config"
-	"github.com/cristiano-pacheco/go-online-auction/pkg/logger"
+	"auction/internal/shared/modules/config"
+	"auction/pkg/logger"
 )
 
 type Logger logger.Logger

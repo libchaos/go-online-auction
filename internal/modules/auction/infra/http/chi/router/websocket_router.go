@@ -1,8 +1,8 @@
 package router
 
 import (
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/infra/http/chi/handler"
-	"github.com/cristiano-pacheco/go-online-auction/pkg/httpserver"
+	"auction/internal/modules/auction/infra/http/chi/handler"
+	"auction/pkg/httpserver"
 )
 
 func RegisterWebsocketRoutes(server *httpserver.Server, websocketHandler *handler.WebsocketHandler) {

@@ -3,9 +3,9 @@
 package mocks
 
 import (
+	ports "auction/internal/modules/auction/ports"
 	context "context"
 
-	ports "github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/ports"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -158,6 +158,53 @@ func (_c *MockAuctionUnitOfWork_Complete_Call) Return(_a0 error) *MockAuctionUni
 }
 
 func (_c *MockAuctionUnitOfWork_Complete_Call) RunAndReturn(run func(context.Context) error) *MockAuctionUnitOfWork_Complete_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// OutboxRepository provides a mock function with no fields
+func (_m *MockAuctionUnitOfWork) OutboxRepository() ports.OutboxRepository {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for OutboxRepository")
+	}
+
+	var r0 ports.OutboxRepository
+	if rf, ok := ret.Get(0).(func() ports.OutboxRepository); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(ports.OutboxRepository)
+		}
+	}
+
+	return r0
+}
+
+// MockAuctionUnitOfWork_OutboxRepository_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'OutboxRepository'
+type MockAuctionUnitOfWork_OutboxRepository_Call struct {
+	*mock.Call
+}
+
+// OutboxRepository is a helper method to define mock.On call
+func (_e *MockAuctionUnitOfWork_Expecter) OutboxRepository() *MockAuctionUnitOfWork_OutboxRepository_Call {
+	return &MockAuctionUnitOfWork_OutboxRepository_Call{Call: _e.mock.On("OutboxRepository")}
+}
+
+func (_c *MockAuctionUnitOfWork_OutboxRepository_Call) Run(run func()) *MockAuctionUnitOfWork_OutboxRepository_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockAuctionUnitOfWork_OutboxRepository_Call) Return(_a0 ports.OutboxRepository) *MockAuctionUnitOfWork_OutboxRepository_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockAuctionUnitOfWork_OutboxRepository_Call) RunAndReturn(run func() ports.OutboxRepository) *MockAuctionUnitOfWork_OutboxRepository_Call {
 	_c.Call.Return(run)
 	return _c
 }

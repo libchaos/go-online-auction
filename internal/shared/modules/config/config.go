@@ -14,8 +14,12 @@ type Config struct {
 	DB          DB         `mapstructure:",squash"`
 	App         App        `mapstructure:",squash"`
 	Log         Log        `mapstructure:",squash"`
-	Redis       Redis      `mapstructure:",squash"`
+	NATS        NATS       `mapstructure:",squash"`
 	HTTPServer  HTTPServer `mapstructure:",squash"`
+	JWT         JWT        `mapstructure:",squash"`
+	Scheduler   Scheduler  `mapstructure:",squash"`
+	Outbox      Outbox     `mapstructure:",squash"`
+	Payment     Payment    `mapstructure:",squash"`
 }
 
 const EnvProduction = "production"

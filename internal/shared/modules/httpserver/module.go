@@ -3,8 +3,8 @@ package httpserver
 import (
 	"context"
 
-	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/logger"
-	"github.com/cristiano-pacheco/go-online-auction/pkg/httpserver"
+	"auction/internal/shared/modules/logger"
+	"auction/pkg/httpserver"
 	"go.uber.org/fx"
 )
 

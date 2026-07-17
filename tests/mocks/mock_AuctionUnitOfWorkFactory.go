@@ -3,9 +3,9 @@
 package mocks
 
 import (
+	ports "auction/internal/modules/auction/ports"
 	context "context"
 
-	ports "github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/ports"
 	mock "github.com/stretchr/testify/mock"
 )
 

@@ -1,23 +1,24 @@
 package handler
 
 import (
-	"crypto/rand"
-	"math/big"
+	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/application/command"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/application/query"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/infra/http/dto"
-	httperrs "github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/infra/http/errs"
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/infra/websocket"
-	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/logger"
-	"github.com/cristiano-pacheco/go-online-auction/internal/shared/sdk/http/request"
-	"github.com/cristiano-pacheco/go-online-auction/internal/shared/sdk/http/response"
-	"github.com/cristiano-pacheco/go-online-auction/pkg/httpserver"
+	"auction/internal/modules/auction/application/command"
+	"auction/internal/modules/auction/application/query"
+	"auction/internal/modules/auction/infra/http/dto"
+	httperrs "auction/internal/modules/auction/infra/http/errs"
+	"auction/internal/modules/auction/infra/messaging"
+	"auction/internal/modules/auction/infra/websocket"
+	depositports "auction/internal/modules/deposit/ports"
+	"auction/internal/shared/modules/authn"
+	"auction/internal/shared/modules/logger"
+	"auction/internal/shared/sdk/http/request"
+	"auction/internal/shared/sdk/http/response"
+	"auction/pkg/httpserver"
 )
-
-const maxRandomUserID = 100
 
 type AuctionHandler struct {
 	createAuctionCommand *command.CreateAuctionCommand
@@ -26,8 +27,10 @@ type AuctionHandler struct {
 	placeBidCommand      *command.PlaceBidCommand
 	getAuctionByIDQuery  *query.GetAuctionByIDQuery
 	listAuctionsQuery    *query.ListAuctionsQuery
+	eventReplayer        messaging.EventReplayer
 	websocketHub         *websocket.Hub
 	httpServer           *httpserver.Server
+	depositGuard         depositports.DepositGuard
 	logger               logger.Logger
 }
 
@@ -38,8 +41,10 @@ func NewAuctionHandler(
 	placeBidCommand *command.PlaceBidCommand,
 	getAuctionByIDQuery *query.GetAuctionByIDQuery,
 	listAuctionsQuery *query.ListAuctionsQuery,
+	eventReplayer messaging.EventReplayer,
 	websocketHub *websocket.Hub,
 	httpServer *httpserver.Server,
+	depositGuard depositports.DepositGuard,
 	logger logger.Logger,
 ) *AuctionHandler {
 	return &AuctionHandler{
@@ -49,8 +54,10 @@ func NewAuctionHandler(
 		placeBidCommand:      placeBidCommand,
 		getAuctionByIDQuery:  getAuctionByIDQuery,
 		listAuctionsQuery:    listAuctionsQuery,
+		eventReplayer:        eventReplayer,
 		websocketHub:         websocketHub,
 		httpServer:           httpServer,
+		depositGuard:         depositGuard,
 		logger:               logger,
 	}
 }
@@ -63,8 +70,15 @@ func (h *AuctionHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	output, err := h.createAuctionCommand.Execute(r.Context(), command.CreateAuctionCommandInput{
-		ListingID: req.ListingID,
-		EndTime:   req.EndTime,
+		ListingID:          req.ListingID,
+		EndTime:            req.EndTime,
+		TradingMode:        req.TradingMode,
+		StartingPrice:      req.StartingPrice,
+		PriceStep:          req.PriceStep,
+		ReservePrice:       req.ReservePrice,
+		AntiSnipeEnabled:   req.AntiSnipeEnabled,
+		ExtensionWindowSec: req.ExtensionWindowSec,
+		StartTime:          req.StartTime,
 	})
 	if err != nil {
 		response.Error(w, httperrs.MapDomainError(err))
@@ -72,11 +86,18 @@ func (h *AuctionHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = response.JSON(w, http.StatusCreated, dto.AuctionResponse{
-		ID:        output.ID,
-		ListingID: output.ListingID,
-		State:     output.State,
-		EndTime:   output.EndTime,
-		CreatedAt: output.CreatedAt,
+		ID:                 output.ID,
+		ListingID:          output.ListingID,
+		State:              output.State,
+		TradingMode:        output.TradingMode,
+		StartingPrice:      output.StartingPrice,
+		PriceStep:          output.PriceStep,
+		ReservePrice:       output.ReservePrice,
+		AntiSnipeEnabled:   output.AntiSnipeEnabled,
+		ExtensionWindowSec: output.ExtensionWindowSec,
+		StartTime:          output.StartTime,
+		EndTime:            output.EndTime,
+		CreatedAt:          output.CreatedAt,
 	}, nil)
 }
 
@@ -107,9 +128,17 @@ func (h *AuctionHandler) List(w http.ResponseWriter, r *http.Request) {
 			ID:                      auction.ID,
 			ListingID:               auction.ListingID,
 			State:                   auction.State,
+			TradingMode:             auction.TradingMode,
 			StartTime:               auction.StartTime,
 			EndTime:                 auction.EndTime,
+			StartingPrice:           auction.StartingPrice,
+			ReservePrice:            auction.ReservePrice,
+			CurrentPrice:            auction.CurrentPrice,
 			HighestBidAmountInCents: auction.HighestBidAmountInCents,
+			WinnerUserID:            auction.WinnerUserID,
+			WinningBidAmountInCents: auction.WinningBidAmountInCents,
+			AntiSnipeEnabled:        auction.AntiSnipeEnabled,
+			ExtensionWindowSec:      auction.ExtensionWindowSec,
 			CreatedAt:               auction.CreatedAt,
 		})
 	}
@@ -141,25 +170,38 @@ func (h *AuctionHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	bids := make([]dto.BidResponse, 0, len(output.Bids))
 	for _, bid := range output.Bids {
 		bids = append(bids, dto.BidResponse{
-			ID:            bid.ID,
-			AuctionID:     auctionID,
-			UserID:        bid.UserID,
-			AmountInCents: bid.AmountInCents,
-			CreatedAt:     bid.CreatedAt,
+			ID:               bid.ID,
+			AuctionID:        auctionID,
+			UserID:           bid.UserID,
+			AmountInCents:    bid.AmountInCents,
+			MaxAmountInCents: bid.MaxAmountInCents,
+			CreatedAt:        bid.CreatedAt,
 		})
 	}
 
+	detail := dto.AuctionResponse{
+		ID:                      output.Auction.ID,
+		ListingID:               output.Auction.ListingID,
+		State:                   output.Auction.State,
+		TradingMode:             output.Auction.TradingMode,
+		StartTime:               output.Auction.StartTime,
+		EndTime:                 output.Auction.EndTime,
+		StartingPrice:           output.Auction.StartingPrice,
+		PriceStep:               output.Auction.PriceStep,
+		ReservePrice:            output.Auction.ReservePrice,
+		CurrentPrice:            output.Auction.CurrentPrice,
+		HighestBidAmountInCents: output.Auction.HighestBidAmountInCents,
+		WinnerUserID:            output.Auction.WinnerUserID,
+		WinningBidID:            output.Auction.WinningBidID,
+		WinningBidAmountInCents: output.Auction.WinningBidAmountInCents,
+		AntiSnipeEnabled:        output.Auction.AntiSnipeEnabled,
+		ExtensionWindowSec:      output.Auction.ExtensionWindowSec,
+		CreatedAt:               output.Auction.CreatedAt,
+	}
+
 	_ = response.JSON(w, http.StatusOK, dto.AuctionDetailResponse{
-		Auction: dto.AuctionResponse{
-			ID:                      output.Auction.ID,
-			ListingID:               output.Auction.ListingID,
-			State:                   output.Auction.State,
-			StartTime:               output.Auction.StartTime,
-			EndTime:                 output.Auction.EndTime,
-			HighestBidAmountInCents: output.Auction.HighestBidAmountInCents,
-			CreatedAt:               output.Auction.CreatedAt,
-		},
-		Bids: bids,
+		Auction: detail,
+		Bids:    bids,
 	}, nil)
 }
 
@@ -227,20 +269,103 @@ func (h *AuctionHandler) PlaceBid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// random user id (constrained to int64 max for PostgreSQL BIGINT compatibility)
-	// Using crypto/rand to generate a secure random value in range [1, maxRandomUserID]
-	randomNum, _ := rand.Int(rand.Reader, big.NewInt(maxRandomUserID))
-	userID := randomNum.Uint64() + 1
+	claims, ok := authn.ClaimsFromContext(r.Context())
+	if !ok {
+		response.Error(w, authn.ErrUnauthorized)
+		return
+	}
 
-	_, err = h.placeBidCommand.Execute(r.Context(), command.PlaceBidCommandInput{
-		AuctionID:     auctionID,
-		UserID:        userID,
-		AmountInCents: req.AmountInCents,
+	if guardErr := h.depositGuard.EnsureEligible(r.Context(), claims.UserID, auctionID); guardErr != nil {
+		response.Error(w, httperrs.MapDomainError(guardErr))
+		return
+	}
+
+	output, err := h.placeBidCommand.Execute(r.Context(), command.PlaceBidCommandInput{
+		AuctionID:        auctionID,
+		UserID:           claims.UserID,
+		AmountInCents:    req.AmountInCents,
+		MaxAmountInCents: req.MaxAmountInCents,
+		IdempotencyKey:   r.Header.Get("Idempotency-Key"),
 	})
 	if err != nil {
 		response.Error(w, httperrs.MapDomainError(err))
 		return
 	}
 
-	response.NoContent(w)
+	_ = response.JSON(w, http.StatusAccepted, dto.PlaceBidAcceptedResponse{
+		IdempotencyKey: output.IdempotencyKey,
+		Status:         output.Status,
+	}, nil)
+}
+
+// Events replays the persisted event history of an auction from the event
+// store. Optional `from`/`until` (RFC3339) narrow the window (temporal query);
+// `limit` caps the number of returned events.
+func (h *AuctionHandler) Events(w http.ResponseWriter, r *http.Request) {
+	idString := request.Param(r, "id")
+	auctionID, err := strconv.ParseUint(idString, 10, 64)
+	if err != nil {
+		response.Error(w, httperrs.ErrInvalidAuctionID)
+		return
+	}
+
+	filter, err := parseReplayFilter(r)
+	if err != nil {
+		response.Error(w, httperrs.ErrInvalidRequest)
+		return
+	}
+
+	events, err := h.eventReplayer.ReplayAuction(r.Context(), auctionID, filter)
+	if err != nil {
+		h.logger.Error().Err(err).Uint64("auction_id", auctionID).Msg("failed to replay auction events")
+		response.Error(w, httperrs.MapDomainError(err))
+		return
+	}
+
+	items := make([]dto.AuctionEventResponse, 0, len(events))
+	for _, env := range events {
+		items = append(items, dto.AuctionEventResponse{
+			EventType:     env.EventType,
+			EventID:       env.EventID,
+			SchemaVersion: env.SchemaVersion,
+			Timestamp:     env.Timestamp,
+			AuctionID:     env.AuctionID,
+			Data:          env.Data,
+		})
+	}
+
+	_ = response.JSON(w, http.StatusOK, dto.AuctionEventListResponse{
+		Events:     items,
+		TotalCount: len(items),
+	}, nil)
+}
+
+func parseReplayFilter(r *http.Request) (messaging.ReplayFilter, error) {
+	var filter messaging.ReplayFilter
+
+	if fromStr := r.URL.Query().Get("from"); fromStr != "" {
+		from, err := time.Parse(time.RFC3339, fromStr)
+		if err != nil {
+			return messaging.ReplayFilter{}, err
+		}
+		filter.From = from
+	}
+
+	if untilStr := r.URL.Query().Get("until"); untilStr != "" {
+		until, err := time.Parse(time.RFC3339, untilStr)
+		if err != nil {
+			return messaging.ReplayFilter{}, err
+		}
+		filter.Until = until
+	}
+
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		limit, err := strconv.Atoi(limitStr)
+		if err != nil || limit < 0 {
+			return messaging.ReplayFilter{}, fmt.Errorf("invalid limit %q", limitStr)
+		}
+		filter.Limit = limit
+	}
+
+	return filter, nil
 }

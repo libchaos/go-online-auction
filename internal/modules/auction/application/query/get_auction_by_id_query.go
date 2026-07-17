@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/ports"
-	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/logger"
+	"auction/internal/modules/auction/ports"
+	"auction/internal/shared/modules/logger"
 )
 
 const topBidsLimit = 10
@@ -23,18 +23,29 @@ type AuctionOutput struct {
 	ID                      uint64
 	ListingID               uint64
 	State                   string
+	TradingMode             string
 	StartTime               *time.Time
 	EndTime                 time.Time
+	StartingPrice           *uint64
+	PriceStep               *uint64
+	ReservePrice            *uint64
+	CurrentPrice            *uint64
 	HighestBidAmountInCents *uint64
+	WinnerUserID            *uint64
+	WinningBidID            *uint64
+	WinningBidAmountInCents *uint64
+	AntiSnipeEnabled        bool
+	ExtensionWindowSec      int64
 	CreatedAt               time.Time
 	UpdatedAt               time.Time
 }
 
 type BidOutput struct {
-	ID            uint64
-	UserID        uint64
-	AmountInCents uint64
-	CreatedAt     time.Time
+	ID               uint64
+	UserID           uint64
+	AmountInCents    uint64
+	MaxAmountInCents *uint64
+	CreatedAt        time.Time
 }
 
 type GetAuctionByIDQuery struct {
@@ -72,23 +83,40 @@ func (q *GetAuctionByIDQuery) Execute(
 
 	bidOutputs := make([]BidOutput, 0, len(bids))
 	for _, bid := range bids {
+		var maxAmountInCents *uint64
+		if bid.MaxAmount() != nil {
+			amount := bid.MaxAmount().AmountInCents()
+			maxAmountInCents = &amount
+		}
 		bidOutputs = append(bidOutputs, BidOutput{
-			ID:            bid.ID(),
-			UserID:        bid.UserID(),
-			AmountInCents: bid.Amount().AmountInCents(),
-			CreatedAt:     bid.CreatedAt(),
+			ID:               bid.ID(),
+			UserID:           bid.UserID(),
+			AmountInCents:    bid.Amount().AmountInCents(),
+			MaxAmountInCents: maxAmountInCents,
+			CreatedAt:        bid.CreatedAt(),
 		})
 	}
 
 	state := auction.State()
+	tradingMode := auction.TradingMode()
 	return GetAuctionByIDQueryOutput{
 		Auction: AuctionOutput{
 			ID:                      auction.ID(),
 			ListingID:               auction.ListingID(),
 			State:                   state.String(),
+			TradingMode:             tradingMode.String(),
 			StartTime:               auction.StartTime(),
 			EndTime:                 auction.EndTime(),
+			StartingPrice:           auction.StartingPrice(),
+			PriceStep:               auction.PriceStep(),
+			ReservePrice:            auction.ReservePrice(),
+			CurrentPrice:            auction.CurrentPrice(),
 			HighestBidAmountInCents: auction.HighestBidAmount(),
+			WinnerUserID:            auction.WinnerUserID(),
+			WinningBidID:            auction.WinningBidID(),
+			WinningBidAmountInCents: auction.WinningBidAmount(),
+			AntiSnipeEnabled:        auction.AntiSnipeEnabled(),
+			ExtensionWindowSec:      auction.ExtensionWindowSec(),
 			CreatedAt:               auction.CreatedAt(),
 			UpdatedAt:               auction.UpdatedAt(),
 		},

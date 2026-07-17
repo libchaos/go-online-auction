@@ -7,12 +7,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cristiano-pacheco/go-online-auction/internal/shared/modules/logger"
+	"auction/internal/modules/auction/infra/messaging"
+	"auction/internal/shared/modules/logger"
 	"github.com/gorilla/websocket"
-	"github.com/redis/go-redis/v9"
 )
 
-const minChannelPartsForAuctionID = 2
+const (
+	auctionIDTokenPosition   = 2
+	minSubjectPartsForID     = auctionIDTokenPosition + 1
+	eventBroadcastBufferSize = 256
+)
 
 type SubscriptionConfirmed struct {
 	Type      string `json:"type"`
@@ -28,32 +32,47 @@ type EventMessage struct {
 	Data      json.RawMessage `json:"data"`
 }
 
+type broadcastEvent struct {
+	subject string
+	data    []byte
+}
+
 type Hub struct {
 	subscriberRegistry *AuctionSubscriberRegistry
-	redisClient        redis.UniversalClient
-	pubsub             *redis.PubSub
+	eventConsumer      messaging.EventConsumer
 	register           chan *Client
 	unregister         chan *Client
+	events             chan broadcastEvent
 	logger             logger.Logger
 }
 
 func NewHub(
 	subscriberRegistry *AuctionSubscriberRegistry,
-	redisClient redis.UniversalClient,
+	eventConsumer messaging.EventConsumer,
 	logger logger.Logger,
 ) *Hub {
 	return &Hub{
 		subscriberRegistry: subscriberRegistry,
-		redisClient:        redisClient,
+		eventConsumer:      eventConsumer,
 		register:           make(chan *Client),
 		unregister:         make(chan *Client),
+		events:             make(chan broadcastEvent, eventBroadcastBufferSize),
 		logger:             logger,
 	}
 }
 
 func (h *Hub) Run(ctx context.Context) {
-	h.pubsub = h.redisClient.PSubscribe(ctx, "auction:*:events")
-	channel := h.pubsub.Channel()
+	go func() {
+		consumeErr := h.eventConsumer.Consume(ctx, func(subject string, data []byte) {
+			select {
+			case h.events <- broadcastEvent{subject: subject, data: data}:
+			case <-ctx.Done():
+			}
+		})
+		if consumeErr != nil {
+			h.logger.Error().Err(consumeErr).Msg("failed to consume auction events")
+		}
+	}()
 
 	for {
 		select {
@@ -73,16 +92,14 @@ func (h *Hub) Run(ctx context.Context) {
 		case client := <-h.unregister:
 			h.subscriberRegistry.Remove(client.auctionID, client)
 			client.Close()
-		case message, ok := <-channel:
-			if !ok || message == nil {
-				return
-			}
-			auctionID := extractAuctionID(message.Channel)
+		case evt := <-h.events:
+			auctionID := extractAuctionID(evt.subject)
 			if auctionID == 0 {
-				h.logger.Warn().Str("channel", message.Channel).Msg("failed to extract auction ID from channel")
+				h.logger.Warn().Str("subject", evt.subject).Msg("failed to extract auction ID from subject")
 				continue
 			}
-			h.subscriberRegistry.Broadcast(auctionID, []byte(message.Payload))
+			h.subscriberRegistry.Broadcast(auctionID, evt.data)
+			messaging.IncWebsocketBroadcast()
 		}
 	}
 }
@@ -96,16 +113,13 @@ func (h *Hub) RegisterClient(conn *websocket.Conn, auctionID uint64) {
 }
 
 func (h *Hub) Shutdown() error {
-	if h.pubsub != nil {
-		return h.pubsub.Close()
-	}
 	return nil
 }
 
-func extractAuctionID(channel string) uint64 {
-	parts := strings.Split(channel, ":")
-	if len(parts) >= minChannelPartsForAuctionID {
-		id, err := strconv.ParseUint(parts[1], 10, 64)
+func extractAuctionID(subject string) uint64 {
+	parts := strings.Split(subject, ".")
+	if len(parts) >= minSubjectPartsForID {
+		id, err := strconv.ParseUint(parts[auctionIDTokenPosition], 10, 64)
 		if err != nil {
 			return 0
 		}

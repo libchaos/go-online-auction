@@ -1,7 +1,7 @@
 package enum
 
 import (
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/domain/errs"
+	"auction/internal/modules/auction/domain/errs"
 )
 
 const (

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/cristiano-pacheco/go-online-auction/internal/modules/auction/infra/websocket"
+	"auction/internal/modules/auction/infra/websocket"
 	ws "github.com/gorilla/websocket"
 	"github.com/stretchr/testify/suite"
 )
