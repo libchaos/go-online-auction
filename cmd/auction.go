@@ -6,9 +6,13 @@ import (
 
 	"auction/internal/modules/auction"
 	"auction/internal/modules/deposit"
+	"auction/internal/modules/ledger"
 	"auction/internal/modules/listing"
+	"auction/internal/modules/notification"
+	"auction/internal/modules/payment"
 	"auction/internal/modules/users"
 	"auction/internal/shared/modules/authn"
+	"auction/internal/shared/modules/authz"
 	"auction/internal/shared/modules/config"
 	"auction/internal/shared/modules/database"
 	"auction/internal/shared/modules/httpserver"
@@ -28,21 +32,40 @@ var auctionCmd = &cobra.Command{
 			nats.Module,
 			httpserver.Module,
 			authn.Module,
+			authz.Module,
 			users.Module,
 			listing.Module,
 			auction.Module,
 			deposit.Module,
+			ledger.Module,
+			payment.Module,
+			notification.Module,
 			fx.Invoke(
 				users.RegisterUserRoutes,
+				users.RegisterRBACRoutes,
 				listing.RegisterListingRoutes,
 				auction.RegisterAuctionRoutes,
 				auction.RegisterOutboxRelay,
+				deposit.RegisterOutboxRelay,
+				listing.RegisterOutboxRelay,
+				payment.RegisterOutboxRelay,
 				auction.RegisterAuctionScheduler,
 				auction.RegisterMetricsRoute,
 				deposit.RegisterDepositRoutes,
 				deposit.RegisterDepositWebsocketRoutes,
+				ledger.RegisterLedgerRoutes,
 				deposit.RegisterDepositHub,
 				deposit.RegisterDepositEventConsumer,
+				payment.RegisterPaymentRoutes,
+				payment.RegisterAlipayNotifyRoute,
+				payment.RegisterPaymentConsumers,
+				notification.RegisterOutboxRelay,
+				notification.RegisterNotificationRoutes,
+				notification.RegisterNotificationStreamRoute,
+				notification.RegisterNotificationHub,
+				notification.RegisterNotificationSourceConsumer,
+				notification.RegisterNotificationEmailConsumer,
+				notification.RegisterWatchlistRoutes,
 			),
 		)
 		app.Run()

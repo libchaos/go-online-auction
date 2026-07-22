@@ -11,7 +11,7 @@ import (
 )
 
 const insertOutboxEvent = `-- name: InsertOutboxEvent :exec
-INSERT INTO event_outbox (event_id, event_type, schema_version, subject, payload, occurred_at)
+INSERT INTO deposit_outbox (event_id, event_type, schema_version, subject, payload, occurred_at)
 VALUES ($1, $2, $3, $4, $5, $6)
 `
 
@@ -38,21 +38,21 @@ func (q *Queries) InsertOutboxEvent(ctx context.Context, arg InsertOutboxEventPa
 
 const listUnpublishedOutboxEvents = `-- name: ListUnpublishedOutboxEvents :many
 SELECT id, event_id, event_type, schema_version, subject, payload, occurred_at, created_at, published_at
-FROM event_outbox
+FROM deposit_outbox
 WHERE published_at IS NULL
 ORDER BY id ASC
 LIMIT $1
 `
 
-func (q *Queries) ListUnpublishedOutboxEvents(ctx context.Context, limit int32) ([]EventOutbox, error) {
+func (q *Queries) ListUnpublishedOutboxEvents(ctx context.Context, limit int32) ([]DepositOutbox, error) {
 	rows, err := q.db.Query(ctx, listUnpublishedOutboxEvents, limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []EventOutbox
+	var items []DepositOutbox
 	for rows.Next() {
-		var i EventOutbox
+		var i DepositOutbox
 		if err := rows.Scan(
 			&i.ID,
 			&i.EventID,
@@ -75,7 +75,7 @@ func (q *Queries) ListUnpublishedOutboxEvents(ctx context.Context, limit int32) 
 }
 
 const markOutboxEventPublished = `-- name: MarkOutboxEventPublished :execrows
-UPDATE event_outbox
+UPDATE deposit_outbox
 SET published_at = NOW()
 WHERE id = $1 AND published_at IS NULL
 `

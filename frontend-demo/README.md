@@ -6,7 +6,7 @@ Demo React application for testing the Go auction backend APIs.
 
 - Node.js 20.x LTS or later
 - npm 9.x or later
-- Backend API running on http://localhost:8080
+- Backend API running on http://localhost:9000
 
 ## Installation
 
@@ -26,7 +26,7 @@ The application uses environment variables to configure the backend API URL.
 
 **Default Configuration (.env):**
 ```
-VITE_API_BASE_URL=http://localhost:8080/api/v1
+VITE_API_BASE_URL=http://localhost:9000/api/v1
 ```
 
 **Local Overrides (.env.local - gitignored):**
@@ -183,12 +183,12 @@ The application integrates with the following backend endpoints:
 - `POST /api/v1/auctions/:id/bids` - Place bid
 
 **WebSocket:**
-- `ws://localhost:8080/ws/v1/auctions/:id` - Live event stream
+- `ws://localhost:9000/ws/v1/auctions/:id` - Live event stream
 
 ## Troubleshooting
 
 **Backend Connection Issues:**
-- Verify the backend is running on port 8080
+- Verify the backend is running on port 9000
 - Check CORS configuration allows `http://localhost:5173`
 - Confirm `VITE_API_BASE_URL` in `.env` or `.env.local`
 

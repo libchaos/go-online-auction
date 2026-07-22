@@ -15,6 +15,7 @@ import (
 	"auction/internal/modules/users/infra/token"
 	"auction/internal/modules/users/ports"
 	"auction/internal/shared/modules/authn"
+	"auction/internal/shared/modules/authz"
 	"auction/pkg/httpserver"
 )
 
@@ -64,6 +65,15 @@ var Module = fx.Module(
 	fx.Provide(query.NewGetUserByIDQuery),
 	fx.Provide(query.NewListUsersQuery),
 
+	fx.Provide(command.NewAddPolicyCommand),
+	fx.Provide(command.NewRemovePolicyCommand),
+	fx.Provide(query.NewListPoliciesQuery),
+	fx.Provide(command.NewAssignRoleCommand),
+	fx.Provide(command.NewRevokeRoleCommand),
+	fx.Provide(command.NewRevokeAllRolesCommand),
+	fx.Provide(query.NewListRoleAssignmentsQuery),
+	fx.Provide(handler.NewRBACHandler),
+
 	fx.Provide(handler.NewUserHandler),
 )
 
@@ -71,6 +81,15 @@ func RegisterUserRoutes(
 	server *httpserver.Server,
 	userHandler *handler.UserHandler,
 	middleware *authn.Middleware,
+	authzMiddleware *authz.Middleware,
 ) {
-	router.RegisterUserRoutes(server, userHandler, middleware)
+	router.RegisterUserRoutes(server, userHandler, middleware, authzMiddleware)
+}
+
+func RegisterRBACRoutes(
+	server *httpserver.Server,
+	rbacHandler *handler.RBACHandler,
+	middleware *authn.Middleware,
+) {
+	router.RegisterRBACRoutes(server, rbacHandler, middleware)
 }

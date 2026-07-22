@@ -3,7 +3,7 @@ package deposit
 import (
 	"context"
 
-	"go.uber.org/fx"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"auction/internal/modules/deposit/application/command"
 	"auction/internal/modules/deposit/application/guard"
@@ -12,18 +12,26 @@ import (
 	"auction/internal/modules/deposit/infra/http/chi/router"
 	"auction/internal/modules/deposit/infra/mapper"
 	"auction/internal/modules/deposit/infra/messaging"
+	depositoutbox "auction/internal/modules/deposit/infra/outbox"
 	"auction/internal/modules/deposit/infra/payment"
 	"auction/internal/modules/deposit/infra/repository"
+	"auction/internal/modules/deposit/infra/sqlcgen"
 	"auction/internal/modules/deposit/infra/uow"
 	"auction/internal/modules/deposit/infra/websocket"
 	"auction/internal/modules/deposit/ports"
 	"auction/internal/shared/modules/authn"
+	"auction/internal/shared/modules/authz"
+	"auction/internal/shared/modules/config"
 	"auction/internal/shared/modules/logger"
 	"auction/pkg/httpserver"
+
+	"go.uber.org/fx"
 )
 
 var Module = fx.Module(
 	"deposit",
+
+	fx.Provide(func(pool *pgxpool.Pool) sqlcgen.DBTX { return pool }),
 
 	fx.Provide(mapper.NewDepositMapper),
 
@@ -84,16 +92,39 @@ var Module = fx.Module(
 	fx.Provide(websocket.NewUserSubscriberRegistry),
 	fx.Provide(websocket.NewHub),
 
-	fx.Provide(messaging.NewJetStreamDepositEventConsumer),
+	fx.Provide(
+		fx.Annotate(
+			messaging.NewJetStreamDepositEventConsumer,
+			fx.As(new(websocket.EventConsumer)),
+		),
+	),
 	fx.Provide(messaging.NewSettlementConsumer),
+
+	// Transactional outbox: the deposit module owns its own outbox table
+	// (deposit_outbox) and its own relay, so it can be deployed independently
+	// of the auction module.
+	fx.Provide(
+		fx.Annotate(
+			depositoutbox.NewPostgresOutboxRepository,
+			fx.As(new(ports.DepositOutboxRepository)),
+		),
+	),
+	fx.Provide(func(cfg config.Config) depositoutbox.Config {
+		return depositoutbox.Config{
+			Interval:  cfg.Outbox.Interval,
+			BatchSize: cfg.Outbox.BatchSize,
+		}
+	}),
+	fx.Provide(depositoutbox.NewRelay),
 )
 
 func RegisterDepositRoutes(
 	server *httpserver.Server,
 	depositHandler *handler.DepositHandler,
 	middleware *authn.Middleware,
+	authzMiddleware *authz.Middleware,
 ) {
-	router.RegisterDepositRoutes(server, depositHandler, middleware)
+	router.RegisterDepositRoutes(server, depositHandler, middleware, authzMiddleware)
 }
 
 func RegisterDepositWebsocketRoutes(
@@ -152,6 +183,30 @@ func RegisterDepositEventConsumer(
 			consumerCancel()
 			settlementConsumer.Stop()
 
+			return nil
+		},
+	})
+}
+
+// RegisterOutboxRelay wires the deposit module's transactional outbox relay
+// into the fx lifecycle. It runs in every process that writes deposit events.
+func RegisterOutboxRelay(
+	lc fx.Lifecycle,
+	relay *depositoutbox.Relay,
+	logger logger.Logger,
+) {
+	relayCtx, relayCancel := context.WithCancel(context.Background())
+
+	lc.Append(fx.Hook{
+		OnStart: func(_ context.Context) error {
+			logger.Info().Msg("starting deposit outbox relay")
+			relay.Start(relayCtx)
+			return nil
+		},
+		OnStop: func(_ context.Context) error {
+			logger.Info().Msg("stopping deposit outbox relay")
+			relayCancel()
+			relay.Stop()
 			return nil
 		},
 	})

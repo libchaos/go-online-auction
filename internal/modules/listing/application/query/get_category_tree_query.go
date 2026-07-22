@@ -111,9 +111,12 @@ func buildCategoryForest(categories []model.CategoryModel) []*CategoryTreeNode {
 
 	roots := make([]*CategoryTreeNode, 0)
 	for _, id := range order {
-		node := nodes[id]
+		node, ok := nodes[id]
+		if !ok {
+			continue
+		}
 		if node.ParentID != nil {
-			if parent, ok := nodes[*node.ParentID]; ok {
+			if parent, found := nodes[*node.ParentID]; found {
 				parent.Children = append(parent.Children, node)
 				continue
 			}

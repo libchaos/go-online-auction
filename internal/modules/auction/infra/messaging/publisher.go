@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 
 	"auction/internal/modules/auction/ports"
 	"auction/internal/shared/modules/logger"
@@ -53,7 +56,22 @@ func (p *JetStreamBidCommandPublisher) Publish(
 
 	subject := BuildBidCommandSubject(cmd.AuctionID)
 	startedAt := time.Now()
-	_, err = p.js.Publish(ctx, subject, data, jetstream.WithMsgID(cmd.IdempotencyKey))
+
+	// Inject the active W3C trace context into the NATS headers so the trace
+	// continues across the message boundary. With no active span the
+	// propagator injects nothing, keeping this safe.
+	carrier := propagation.MapCarrier{}
+	otel.GetTextMapPropagator().Inject(ctx, carrier)
+	headers := nats.Header{}
+	for k, v := range carrier {
+		headers.Set(k, v)
+	}
+
+	_, err = p.js.PublishMsg(ctx, &nats.Msg{
+		Subject: subject,
+		Data:    data,
+		Header:  headers,
+	}, jetstream.WithMsgID(cmd.IdempotencyKey))
 	bidCommandPublishDuration.Observe(time.Since(startedAt).Seconds())
 	if err != nil {
 		p.logger.Error().

@@ -26,7 +26,7 @@ This project solves the complex engineering challenge of building a concurrent, 
 
 **Engineering Focus:**
 - **Concurrent Bid Handling**: Optimistic locking with database-level consistency guarantees
-- **Event-Driven Architecture**: Redis Pub/Sub enabling horizontal scalability
+- **Event-Driven Architecture**: NATS JetStream enabling horizontal scalability
 - **CQRS Pattern**: Separation of write/read operations for performance and clarity
 - **Hexagonal Architecture**: Ports & adapters pattern for testability and maintainability
 - **Domain-Driven Design**: Rich domain models with enforced business invariants
@@ -76,33 +76,35 @@ CREATE TRIGGER enforce_higher_bids
 - WebSocket clients receiving events for failed transactions
 - Inconsistent state between database and event stream
 
-**Solution**: Unit of Work pattern with post-commit event dispatch
+**Solution**: Unit of Work pattern with post-commit event dispatch into a **transactional outbox**
 ```go
 func (u *AuctionUnitOfWork) Complete(ctx context.Context) error {
     if err := u.tx.Commit(ctx); err != nil {
         return err
     }
-    // Events only dispatched after successful commit
-    return u.dispatchEvents(ctx)
+    // Outbox rows are committed in the same transaction as the state change.
+    // A separate outbox relay drains them to NATS JetStream after commit.
+    return nil
 }
 ```
 
 **Trade-offs**:
-- Events dispatched in-process (not guaranteed delivery) → acceptable for real-time updates
-- For critical events, would implement outbox pattern with separate worker
+- Events are persisted in the outbox table within the same DB transaction (guaranteed at-least-once)
+- An outbox relay (background worker) publishes pending events to the `AUCTION_EVENTS`/`DEPOSIT_EVENTS` JetStream streams; the domain event ID doubles as the NATS message ID, so redeliveries are deduplicated server-side
+- Decouples commit from delivery; a crashed relay simply resumes from the last unpublished row
 
 ### 3. Horizontal Scalability
 **Challenge**: Multiple backend instances need to share WebSocket connections and event distribution.
 
-**Solution**: Redis Pub/Sub as event bus
-- Each backend instance subscribes to `auction:{id}:events` channels
-- Commands publish to Redis after transaction commit
-- WebSocket hubs relay to connected clients
-- Enables stateless backend instances behind load balancer
+**Solution**: NATS JetStream as the event bus / message broker
+- Each backend instance runs a stateless HTTP + WebSocket server behind a load balancer
+- Commands persist the state change and an outbox row in one transaction; the relay publishes to JetStream
+- WebSocket hubs subscribe to the relevant JetStream streams (e.g. `AUCTION_EVENTS`, `DEPOSIT_EVENTS`) and broadcast to connected clients
+- Enables multiple server instances and multiple relay instances safely (idempotent delivery)
 
 **Trade-offs**:
-- Redis as single point of failure → mitigated with Redis Sentinel/Cluster in production
-- At-most-once delivery semantics → acceptable for real-time notifications
+- JetStream provides durable, at-least-once delivery with server-side deduplication
+- Multiple relay instances are safe because of the `Nats-Msg-Id` dedupe key
 
 ### 4. Testing & Maintainability
 **Challenge**: Complex business logic and infrastructure dependencies make testing difficult.
@@ -188,12 +190,12 @@ The system follows hexagonal architecture principles to achieve testability and 
 **Infrastructure Layer** (Technology-specific implementations)
 - **Adapters**:
   - `PostgreSQLAuctionRepository` implements `ports.AuctionRepository`
-  - `RedisEventDispatcher` implements `ports.EventDispatcher`
+  - JetStream event publishers/post-commit outbox relay implement the event-dispatch port
   - `ChiAuctionHandler` adapts HTTP to command/query handlers
 - **Benefits**:
   - Swap PostgreSQL for MySQL without touching domain code
   - Test with in-memory repository instead of real database
-  - Replace Redis with Kafka without changing event contracts
+  - Replace NATS with Kafka without changing event contracts
 
 ### 2. CQRS (Command Query Responsibility Segregation)
 Strict separation between write and read operations:
@@ -260,109 +262,94 @@ Coordinates multi-repository operations within a single transaction:
 - **Error boundaries** - Graceful handling of runtime errors
 - **Loading states** - Visual feedback during all async operations
 
+### 8. Authentication & Authorization (JWT + RBAC)
+
+The backend does **not** fabricate user IDs. Every state-changing request is authenticated with a JWT and the caller's identity/role is taken from the verified token claims.
+
+- **Login / registration** (`internal/shared/modules/authn`, `internal/modules/users`):
+  - `POST /api/v1/auth/register` → creates a user and returns a JWT
+  - `POST /api/v1/auth/login` → returns a JWT + refresh token
+  - `POST /api/v1/auth/refresh` / `POST /api/v1/auth/logout` → token lifecycle
+  - Tokens are signed JWTs; the `users/infra/token/jwt_token_service.go` service issues and verifies them.
+- **Request authentication**: clients send `Authorization: Bearer <token>`. The `authn.Middleware.RequireAuth` handler parses the header, verifies the signature, and injects `*authn.Claims` (`UserID`, `Role`, `Email`) into the request context via `authn.WithClaims` / `authn.ClaimsFromContext`.
+- **Role-based access control**: `authn.RequireRole(roles...)` gates endpoints by role. Roles are `admin`, `seller`, and `bidder` (`authn.RoleAdmin` / `authn.RoleSeller` / `authn.RoleBidder`). Examples in the routers:
+  - Auction create / start / cancel → `RequireAuth` + `RequireRole(seller, admin)`
+  - `PlaceBid` → `RequireAuth` (any authenticated bidder); the handler reads `claims.UserID` and uses it as the bid's `UserID` (no random generation)
+  - Deposit endpoints → `RequireAuth` + `RequireRole(bidder)`
+  - `GET /api/v1/users` admin management → `RequireRole(admin)`
+- **Authorization errors**: missing/invalid token → `401 Unauthorized`; authenticated but wrong role → `403 Forbidden`.
+
 ## Project Structure
 
 ```
 go-online-auction/
-├── cmd/                                    # CLI commands
-│   ├── all.go                             # Run all modules
-│   ├── auction.go                         # Run auction HTTP server
-│   ├── websocket.go                       # Run WebSocket server
+├── cmd/                                    # CLI commands (Cobra)
+│   ├── all.go                             # Run all modules (HTTP + WebSocket + bid processor)
+│   ├── auction.go                         # Run the auction HTTP API server
+│   ├── websocket.go                       # Run the WebSocket server
+│   ├── bid_processor.go                   # Run the bid processor consumer
+│   ├── create_admin.go                    # Create an admin user
 │   ├── db_migrate.go                      # Database migrations
 │   └── root.go                            # Root command
 │
 ├── internal/                              # Private application code
 │   ├── modules/
-│   │   └── auction/                       # Auction bounded context
-│   │       ├── domain/                    # Domain models
-│   │       │   ├── model/                 # Aggregates & entities
-│   │       │   │   ├── auction_model.go
-│   │       │   │   ├── bid_model.go
-│   │       │   │   ├── listing_model.go
-│   │       │   │   └── user_model.go
-│   │       │   ├── event/                 # Domain events
-│   │       │   │   ├── auction_started_event.go
-│   │       │   │   ├── bid_placed_event.go
-│   │       │   │   └── auction_ended_event.go
-│   │       │   └── enum/                  # Enumerations
-│   │       │       ├── auction_state_enum.go
-│   │       │       └── bid_status_enum.go
-│   │       │
-│   │       ├── application/               # Use cases
-│   │       │   ├── command/               # Write operations
-│   │       │   │   ├── create_auction_command.go
-│   │       │   │   ├── start_auction_command.go
-│   │       │   │   ├── place_bid_command.go
-│   │       │   │   ├── cancel_auction_command.go
-│   │       │   │   └── close_auction_command.go
-│   │       │   └── query/                 # Read operations
-│   │       │       ├── get_auction_by_id_query.go
-│   │       │       └── list_auctions_query.go
-│   │       │
-│   │       ├── ports/                     # Interfaces (hexagonal architecture)
-│   │       │   ├── auction_repository.go
-│   │       │   ├── bid_repository.go
-│   │       │   ├── auction_unit_of_work.go
-│   │       │   └── event_dispatchers.go
-│   │       │
-│   │       ├── infra/                     # Infrastructure implementations
-│   │       │   ├── persistence/
-│   │       │   │   ├── repository/        # Repository implementations
-│   │       │   │   │   ├── auction_repository.go
-│   │       │   │   │   └── bid_repository.go
-│   │       │   │   ├── uow/               # Unit of Work
-│   │       │   │   │   └── auction_unit_of_work.go
-│   │       │   │   ├── query/             # SQL queries (sqlc input)
-│   │       │   │   │   ├── auction.sql
-│   │       │   │   │   └── bid.sql
-│   │       │   │   ├── sqlcgen/           # Generated type-safe queries (sqlc output)
-│   │       │   │   └── mapper/            # Row-Domain mappers
-│   │       │   │       ├── auction_mapper.go
-│   │       │   │       └── bid_mapper.go
-│   │       │   │
-│   │       │   ├── event/
-│   │       │   │   └── dispatcher/        # JetStream event dispatchers
-│   │       │   │       ├── jetstream_auction_started_event_dispatcher.go
-│   │       │   │       ├── jetstream_bid_placed_event_dispatcher.go
-│   │       │   │       └── jetstream_auction_ended_event_dispatcher.go
-│   │       │   │
-│   │       │   ├── messaging/             # JetStream publisher/consumer + bid processor
-│   │       │   │   ├── event_publisher.go
-│   │       │   │   ├── event_consumer.go
-│   │       │   │   ├── publisher.go
-│   │       │   │   └── bid_processor.go
-│   │       │   │
-│   │       │   ├── websocket/             # WebSocket hub
-│   │       │   │   ├── hub.go
-│   │       │   │   └── registry.go
-│   │       │   │
-│   │       │   └── http/
-│   │       │       ├── chi/
-│   │       │       │   ├── handler/       # HTTP handlers
-│   │       │       │   │   ├── auction_handler.go
-│   │       │       │   │   └── websocket_handler.go
-│   │       │       │   └── router/        # Route registration
-│   │       │       │       ├── auction_router.go
-│   │       │       │       └── websocket_router.go
-│   │       │       ├── dto/               # HTTP DTOs
-│   │       │       │   ├── auction.go
-│   │       │       │   └── bid.go
-│   │       │       └── errs/              # HTTP errors
-│   │       │           └── errs.go
-│   │       │
-│   │       └── module.go                  # Fx module definition
+│   │   ├── auction/                       # Auction bounded context
+│   │   │   ├── domain/                    # model/ event/ enum/ errs/ strategy/
+│   │   │   ├── application/               # command/ (create,start,place_bid,cancel,close) + query/
+│   │   │   ├── ports/                     # Repository / Unit-of-Work interfaces
+│   │   │   ├── infra/
+│   │   │   │   ├── event/envelope/        # Versioned event envelope
+│   │   │   │   ├── http/chi/{handler,router}/  # Chi HTTP adapters
+│   │   │   │   ├── dto/ errs/ mapper/     # HTTP DTOs, errors, row mappers
+│   │   │   │   ├── messaging/             # JetStream publisher/consumer + bid processor
+│   │   │   │   ├── outbox/                # Transactional outbox relay -> JetStream
+│   │   │   │   ├── query/ sqlcgen/        # sqlc SQL input + generated code
+│   │   │   │   ├── repository/ uow/       # PostgreSQL repositories + unit of work
+│   │   │   │   ├── scheduler/             # Auto start/close scheduler
+│   │   │   │   └── websocket/             # WS hub + client registry
+│   │   │   └── module.go                  # Fx module definition
+│   │   │
+│   │   ├── deposit/                       # Deposit / bidder eligibility context
+│   │   │   ├── domain/                    # model/ event/ enum/ errs/
+│   │   │   ├── application/               # command/ query/ guard/ (eligibility)
+│   │   │   ├── ports/
+│   │   │   ├── infra/
+│   │   │   │   ├── payment/               # PaymentPort: mock + generic PSP adapters
+│   │   │   │   ├── outbox/                # outbox repository
+│   │   │   │   ├── messaging/             # deposit + settlement consumers
+│   │   │   │   ├── websocket/             # per-user deposit WS hub
+│   │   │   │   ├── http/chi/{handler,router}/ dto/ errs/
+│   │   │   │   ├── repository/ uow/ query/ sqlcgen/ mapper/
+│   │   │   │   └── event/envelope/
+│   │   │   ├── ledger/                    # Authoritative money ledger (sub-module)
+│   │   │   │   ├── domain/                # model/ enum/ errs/
+│   │   │   │   ├── application/service/   # CreateAccount/Transfer/Freeze/Unfreeze/WithdrawFromFrozen
+│   │   │   │   ├── ports/
+│   │   │   │   └── infra/{query,http/dto,http/handler,http/chi/router,uow,sqlcgen,mapper,repository}
+│   │   │   └── module.go
+│   │   │
+│   │   ├── listing/                       # Listing (catalog) context
+│   │   │   ├── domain/ application/{command,query}/ ports/
+│   │   │   └── infra/{event,gateway,http/chi/{handler,router},mapper,query,repository,sqlcgen,uow}
+│   │   │
+│   │   └── users/                         # User + auth context
+│   │       ├── domain/                    # model/ enum/ errs/
+│   │       ├── application/{command,query}/
+│   │       ├── ports/
+│   │       └── infra/{hasher,token(jwt),query,http/chi/{handler,router},errs,sqlcgen,mapper,repository}
 │   │
-│   └── shared/                            # Shared modules
+│   └── shared/
 │       ├── modules/
+│       │   ├── authn/                     # JWT verify + RequireAuth/RequireRole middleware
 │       │   ├── config/                    # Configuration
-│       │   ├── database/                  # Database setup
+│       │   ├── database/                  # Database (pgx) setup
 │       │   ├── httpserver/                # HTTP server
-│       │   ├── logger/                    # Logging
-│       │   └── nats/                      # NATS client + stream declaration
+│       │   ├── logger/                    # Logging (zerolog)
+│       │   ├── nats/                      # NATS client + stream declarations (AUCTION_EVENTS, DEPOSIT_EVENTS)
+│       │   └── uow/                       # Shared unit-of-work helper
 │       └── sdk/
-│           ├── http/                      # HTTP helpers
-│           │   ├── request/
-│           │   └── response/
+│           ├── http/{request,response}/   # HTTP helpers
 │           └── transaction/               # Transaction helpers
 │
 ├── pkg/                                   # Public packages
@@ -372,28 +359,24 @@ go-online-auction/
 │   ├── logger/                            # Logger config
 │   └── nats/                              # NATS config + connection
 │
-├── migrations/                            # SQL migrations
-│   ├── 000001_create_auctions_table.up.sql
-│   ├── 000001_create_auctions_table.down.sql
-│   ├── 000002_create_bids_table.up.sql
-│   └── 000002_create_bids_table.down.sql
-│
-├── tests/                                 # Test files
-│   └── mocks/                             # Mock implementations
-│
+├── migrations/                            # SQL migrations (goose, embedded)
+├── tests/mocks/                           # Generated mocks (mockery)
 ├── tasks/                                 # Task management
-├── docs/                                  # Documentation
+├── docs/                                  # Documentation + diagrams
+├── frontend-demo/                         # React SPA
 ├── main.go                                # Application entry point
 ├── Makefile                               # Build automation
-├── docker-compose.yaml                    # Local infrastructure
-└── go.mod                                 # Go dependencies
+├── docker-compose.yaml                    # Local infrastructure (postgres + nats)
+├── sqlc.yaml                              # sqlc configuration
+├── go.mod                                 # Go module: `auction`
+└── go.sum
 ```
 
 ## Tech Stack
 
 | Technology | Version | Purpose |
 |------------|---------|---------|
-| **Go** | 1.25.5 | Primary language |
+| **Go** | 1.25.7 | Primary language (module `auction`) |
 | **Chi** | v5.2.3 | HTTP router |
 | **PostgreSQL** | 17.5 | Primary database |
 | **NATS (JetStream)** | 2.10 | Command stream + event bus |
@@ -450,7 +433,7 @@ go-online-auction/
 - ✅ WebSocket connections per auction
 - ✅ Live bid placement notifications
 - ✅ Auction state change events (started, ended)
-- ✅ Redis Pub/Sub for horizontal scalability
+- ✅ NATS JetStream for horizontal scalability
 - ✅ Automatic reconnection with exponential backoff
 
 ### Query Features
@@ -466,7 +449,8 @@ go-online-auction/
 - ✅ Asynchronous strong validation in the bid processor (ineligible bids are routed to DLQ as permanent errors)
 - ✅ Automatic settlement on `auction_ended`: winner's held deposit is captured, all other held deposits are released
 - ✅ Real-time deposit status pushed over WebSocket per user (`/ws/v1/deposits`)
-- ✅ External fund movement abstracted behind `PaymentPort` (mock adapter by default; swap for a real PSP later)
+- ✅ Internal fund flow arbitrated by the `ledger` sub-ledger (atomic `Freeze`/`Unfreeze`/`WithdrawFromFrozen` with idempotency keys) — the final source of truth for balances; `PaymentPort` retained as an optional external adapter for future PSP reconciliation
+- ✅ Dedicated ledger HTTP API (`/api/v1/ledger/*`): account creation, transfer, freeze/unfreeze, withdraw-from-frozen (all idempotent via `Idempotency-Key`)
 
 ### Frontend Structure
 
@@ -606,7 +590,7 @@ SCHEDULER_BATCH_SIZE=100
 
 # HTTP Server
 HTTP_SERVER_HOST=0.0.0.0
-HTTP_SERVER_PORT=8080
+HTTP_SERVER_PORT=9000
 
 # Logging
 LOG_LEVEL=info
@@ -615,7 +599,7 @@ LOG_LEVEL=info
 Frontend configuration in `frontend-demo/.env`:
 
 ```env
-VITE_API_BASE_URL=http://localhost:8080/api/v1
+VITE_API_BASE_URL=http://localhost:9000/api/v1
 ```
 
 ---
@@ -795,7 +779,7 @@ Response: 201 Created
 }
 ```
 
-**Note**: User ID is auto-generated for demo purposes. In production, this would come from authentication.
+**Note**: The bid's `user_id` is taken from the authenticated JWT (`claims.UserID`) — there is no random user generation. The request must include `Authorization: Bearer <token>` (any authenticated `bidder` role). An eligibility precheck against the required deposit runs before the bid is accepted.
 
 ### Deposit Endpoints
 
@@ -822,7 +806,7 @@ Response: 201 Created
   "data": { "deposit_id": 10, "status": "held" }
 }
 ```
-Holds the funds via `PaymentPort`, persists the deposit in `held` state, and publishes a `deposit.evt.<user_id>` event. An optional `idempotency_key` prevents duplicate holds.
+Freezes the funds in the `ledger` sub-ledger (atomic + idempotent), persists the deposit in `held` state, and publishes a `deposit.evt.<user_id>` event. An optional `idempotency_key` prevents duplicate holds. The response now also returns `account_id`.
 
 ### List My Deposits
 ```http
@@ -863,13 +847,58 @@ POST /api/v1/deposits/:id/apply      # capture toward winning bid; optional { "a
 POST /api/v1/deposits/:id/forfeit
 POST /api/v1/deposits/:id/cancel
 ```
-Each transitions the deposit state machine and moves funds via `PaymentPort`. Settlement after `auction_ended` calls these automatically (winner → `apply`, others → `release`).
+Each transitions the deposit state machine and moves funds through the `ledger` sub-ledger (`Unfreeze` on release/cancel, `WithdrawFromFrozen` to the platform account on apply/forfeit — all idempotent). Settlement after `auction_ended` calls these automatically (winner → `apply`, others → `release`).
 
 ### Subscribe to Deposit Events (WebSocket)
 ```
-ws://localhost:8080/ws/v1/deposits
+ws://localhost:9000/ws/v1/deposits
 ```
 Streams deposit status changes for the authenticated user.
+
+### Ledger Endpoints (`/api/v1/ledger`)
+
+The `ledger` sub-ledger is the authoritative arbiter of internal fund flow (inspired by hunter-pay's SimpleBank). All mutating endpoints are idempotent: send an `Idempotency-Key` header (falls back to a body field, then a generated UUID). Authenticated requests resolve the caller's account automatically when `owner` is omitted.
+
+### Create Account
+```http
+POST /api/v1/ledger/accounts
+{ "owner": "42", "currency": "CNY" }   # owner optional -> caller's user id
+```
+Response: `201 Created` → `{ "data": { "id": 7, "owner": "42", "balance": 0, "frozen_balance": 0, "currency": "CNY", "version": 1 } }`
+
+### Get Account
+```http
+GET /api/v1/ledger/accounts/:id
+GET /api/v1/ledger/accounts?owner=42        # caller's account when owner omitted
+```
+
+### Transfer
+```http
+POST /api/v1/ledger/transfer
+{
+  "from_account_id": 7, "to_account_id": 9,
+  "amount": 50000, "idempotency_key": "txn-abc"
+}
+```
+
+### Freeze / Unfreeze
+```http
+POST /api/v1/ledger/freeze
+{ "account_id": 7, "amount": 50000, "idempotency_key": "freeze-1" }
+
+POST /api/v1/ledger/unfreeze
+{ "account_id": 7, "amount": 50000, "idempotency_key": "unfreeze-1" }
+```
+
+### Withdraw From Frozen
+```http
+POST /api/v1/ledger/withdraw-from-frozen
+{
+  "account_id": 7, "counterparty_account_id": 1,
+  "amount": 50000, "idempotency_key": "wf-1"
+}
+```
+Moves `amount` from the caller's frozen balance to the counterparty's available balance, recording a `withdraw_from_frozen` operation (and a `withdraw_from_frozen_credit` entry on the counterparty). `counterparty_account_id` is required.
 
 ### Category Endpoints (multi-level)
 
@@ -896,7 +925,7 @@ gets the whole multi-level hierarchy in one call.
 
 ### Subscribe to Auction Events
 ```
-ws://localhost:8080/ws/v1/auctions/:id
+ws://localhost:9000/ws/v1/auctions/:id
 ```
 
 **Connection Flow:**
@@ -1008,20 +1037,21 @@ The following features are explicitly **not implemented** in the current version
 
 ### Authentication & Authorization
 
-- User registration and login
-- JWT or session-based authentication
-- Role-based access control (admin, seller, bidder)
-- User profile management
-- OAuth integration
+**Implemented** (see [Architecture §8](#8-authentication--authorization-jwt--rbac)). The system uses JWT + RBAC:
 
-**Current Behavior:** User IDs are randomly generated for demo purposes
+- `POST /api/v1/auth/register` and `POST /api/v1/auth/login` issue signed JWTs (verified by `internal/shared/modules/authn`)
+- Requests carry `Authorization: Bearer <token>`; `authn.RequireAuth` injects `claims.UserID`/`claims.Role` into context
+- Roles `admin`, `seller`, `bidder` gate endpoints via `authn.RequireRole` (e.g. auction create/start/cancel → seller+admin; `PlaceBid` → any authenticated bidder using `claims.UserID`)
+- User profile self-service (`GET/PUT /api/v1/users/me`) and admin user management (`GET /api/v1/users`, `PATCH /{id}/role`)
+
+**Not implemented:** OAuth integration / third-party identity providers.
 
 ### Payment Processing
 
-- Payment gateway integration (Stripe, PayPal, etc.)
+- Payment gateway integration (Stripe, PayPal, etc.) — only a config-driven `generic` HTTP adapter (`GenericPaymentAdapter`) and an in-memory `mock` exist via `PaymentPort`; no bundled real PSP credentials
 - Order fulfillment
 - Invoice generation
-- Refund processing
+- Refund processing (forfeit/release are internal ledger moves, not PSP refunds)
 - Transaction history
 
 ### Advanced Auction Features
@@ -1032,7 +1062,6 @@ The following features are explicitly **not implemented** in the current version
 - Bid withdrawal
 - Auction extensions
 - Maximum auction duration constraints
-- Automatic auction scheduling
 - Recurring auctions
 - Dutch auctions (descending price)
 
@@ -1056,7 +1085,7 @@ The following features are explicitly **not implemented** in the current version
 
 ### Caching & Performance
 
-- Redis caching for read operations
+- Read-path caching (none currently — reads hit PostgreSQL directly)
 - CQRS read models/projections
 - CDN integration
 - Image optimization
@@ -1072,11 +1101,15 @@ The following features are explicitly **not implemented** in the current version
 
 ### Event Sourcing
 
-- Event store persistence
-- Event replay
-- Outbox pattern for guaranteed event delivery
-- Event versioning
-- Temporal queries
+**Implemented** as an event-driven backbone (see [Architecture §3](#3-event-driven-architecture)). The following *are* present:
+
+- Event store persistence (JetStream `AUCTION_EVENTS` / `DEPOSIT_EVENTS` streams retain events on file storage)
+- Event replay via `GET /api/v1/auctions/{id}/events`
+- Outbox pattern for guaranteed (at-least-once) event delivery — `internal/modules/auction/infra/outbox/relay.go` drains the outbox to JetStream with `Nats-Msg-Id` dedupe
+- Event versioning (versioned envelope via `schema_version`)
+- Temporal queries (`from`/`until` on the replay endpoint)
+
+**Not implemented:** a separate read-side projection/snapshot store derived from the event stream.
 
 ### Additional Features
 
@@ -1108,7 +1141,7 @@ The project enforces strict code quality gates via GitHub Actions CI pipeline th
 **1. Unit Tests** (`go test ./...`)
 - Runs entire test suite with race detector enabled
 - Generates coverage reports
-- Tests use mocks for external dependencies (database, Redis)
+- Tests use mocks for external dependencies (database, NATS)
 - Focus on domain logic and command/query handlers
 - Example test coverage:
   - Domain models: Business rule validation
@@ -1266,8 +1299,8 @@ npm run lint
 Create a `.env.local` file for local overrides:
 
 ```env
-VITE_API_BASE_URL=http://localhost:8080/api/v1
-VITE_WS_BASE_URL=ws://localhost:8080/ws/v1
+VITE_API_BASE_URL=http://localhost:9000/api/v1
+VITE_WS_BASE_URL=ws://localhost:9000/ws/v1
 ```
 
 ### Project Commands

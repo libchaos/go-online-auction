@@ -22,7 +22,7 @@ type Deposit struct {
 	UpdatedAt         time.Time
 }
 
-type EventOutbox struct {
+type DepositOutbox struct {
 	ID            int64
 	EventID       string
 	EventType     string

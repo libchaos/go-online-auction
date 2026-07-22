@@ -9,9 +9,9 @@ import (
 
 var _ ports.ListingOutboxRepository = (*PostgresListingOutboxRepository)(nil)
 
-// PostgresListingOutboxRepository writes listing events into the shared
-// event_outbox table; the outbox relay owned by the auction module drains
-// all pending rows regardless of subject.
+// PostgresListingOutboxRepository writes listing events into the listing's own
+// listing_outbox table. The outbox relay owned by the listing module drains the
+// pending rows, so the listing bounded context is independently deployable.
 type PostgresListingOutboxRepository struct {
 	q *sqlcgen.Queries
 }
@@ -29,4 +29,41 @@ func (r *PostgresListingOutboxRepository) Save(ctx context.Context, event ports.
 		Payload:       event.Payload,
 		OccurredAt:    event.OccurredAt,
 	})
+}
+
+func (r *PostgresListingOutboxRepository) ListUnpublished(
+	ctx context.Context,
+	limit int,
+) ([]ports.OutboxEvent, error) {
+	rows, err := r.q.ListUnpublishedOutboxEvents(ctx, int32(limit))
+	if err != nil {
+		return nil, err
+	}
+
+	events := make([]ports.OutboxEvent, 0, len(rows))
+	for _, row := range rows {
+		events = append(events, ports.OutboxEvent{
+			ID:            uint64(row.ID),
+			EventID:       row.EventID,
+			EventType:     row.EventType,
+			SchemaVersion: int(row.SchemaVersion),
+			Subject:       row.Subject,
+			Payload:       row.Payload,
+			OccurredAt:    row.OccurredAt,
+		})
+	}
+
+	return events, nil
+}
+
+func (r *PostgresListingOutboxRepository) MarkPublished(
+	ctx context.Context,
+	id uint64,
+) (bool, error) {
+	rowsAffected, err := r.q.MarkOutboxEventPublished(ctx, int64(id))
+	if err != nil {
+		return false, err
+	}
+
+	return rowsAffected > 0, nil
 }

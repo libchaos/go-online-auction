@@ -21,9 +21,11 @@ import (
 	"auction/internal/modules/auction/infra/websocket"
 	"auction/internal/modules/auction/ports"
 	"auction/internal/shared/modules/authn"
+	"auction/internal/shared/modules/authz"
 	"auction/internal/shared/modules/config"
 	"auction/internal/shared/modules/logger"
 	"auction/pkg/httpserver"
+
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -114,42 +116,42 @@ var Module = fx.Module(
 		fx.Annotate(
 			strategy.NewEnglishAuctionStrategy,
 			fx.As(new(strategy.TradingStrategy)),
-			fx.ResultTags("group:trading_strategy"),
+			fx.ResultTags(`group:"trading_strategy"`),
 		),
 	),
 	fx.Provide(
 		fx.Annotate(
 			strategy.NewDutchAuctionStrategy,
 			fx.As(new(strategy.TradingStrategy)),
-			fx.ResultTags("group:trading_strategy"),
+			fx.ResultTags(`group:"trading_strategy"`),
 		),
 	),
 	fx.Provide(
 		fx.Annotate(
 			strategy.NewSealedBidAuctionStrategy,
 			fx.As(new(strategy.TradingStrategy)),
-			fx.ResultTags("group:trading_strategy"),
+			fx.ResultTags(`group:"trading_strategy"`),
 		),
 	),
 	fx.Provide(
 		fx.Annotate(
 			strategy.NewVickreyAuctionStrategy,
 			fx.As(new(strategy.TradingStrategy)),
-			fx.ResultTags("group:trading_strategy"),
+			fx.ResultTags(`group:"trading_strategy"`),
 		),
 	),
 	fx.Provide(
 		fx.Annotate(
 			strategy.NewFixedPriceAuctionStrategy,
 			fx.As(new(strategy.TradingStrategy)),
-			fx.ResultTags("group:trading_strategy"),
+			fx.ResultTags(`group:"trading_strategy"`),
 		),
 	),
 	fx.Provide(
 		fx.Annotate(
 			strategy.NewEbayProxyAuctionStrategy,
 			fx.As(new(strategy.TradingStrategy)),
-			fx.ResultTags("group:trading_strategy"),
+			fx.ResultTags(`group:"trading_strategy"`),
 		),
 	),
 
@@ -161,10 +163,6 @@ var Module = fx.Module(
 			fx.As(new(strategy.Resolver)),
 		),
 	),
-
-	fx.Invoke(func(resolver strategy.Resolver) {
-		strategy.SetResolver(resolver)
-	}),
 
 	fx.Provide(messaging.NewBidProcessor),
 
@@ -185,8 +183,9 @@ func RegisterAuctionRoutes(
 	server *httpserver.Server,
 	auctionHandler *handler.AuctionHandler,
 	middleware *authn.Middleware,
+	authzMiddleware *authz.Middleware,
 ) {
-	router.RegisterAuctionRoutes(server, auctionHandler, middleware)
+	router.RegisterAuctionRoutes(server, auctionHandler, middleware, authzMiddleware)
 }
 
 func RegisterMetricsRoute(server *httpserver.Server) {

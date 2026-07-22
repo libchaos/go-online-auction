@@ -4,6 +4,7 @@ package mocks
 
 import (
 	ports "auction/internal/modules/deposit/ports"
+	ledgerports "auction/internal/modules/ledger/ports"
 	context "context"
 
 	mock "github.com/stretchr/testify/mock"
@@ -115,20 +116,67 @@ func (_c *MockDepositUnitOfWork_DepositRepository_Call) RunAndReturn(run func() 
 	return _c
 }
 
+// LedgerRepository provides a mock function with no fields
+func (_m *MockDepositUnitOfWork) LedgerRepository() ledgerports.LedgerRepository {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for LedgerRepository")
+	}
+
+	var r0 ledgerports.LedgerRepository
+	if rf, ok := ret.Get(0).(func() ledgerports.LedgerRepository); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(ledgerports.LedgerRepository)
+		}
+	}
+
+	return r0
+}
+
+// MockDepositUnitOfWork_LedgerRepository_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'LedgerRepository'
+type MockDepositUnitOfWork_LedgerRepository_Call struct {
+	*mock.Call
+}
+
+// LedgerRepository is a helper method to define mock.On call
+func (_e *MockDepositUnitOfWork_Expecter) LedgerRepository() *MockDepositUnitOfWork_LedgerRepository_Call {
+	return &MockDepositUnitOfWork_LedgerRepository_Call{Call: _e.mock.On("LedgerRepository")}
+}
+
+func (_c *MockDepositUnitOfWork_LedgerRepository_Call) Run(run func()) *MockDepositUnitOfWork_LedgerRepository_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockDepositUnitOfWork_LedgerRepository_Call) Return(_a0 ledgerports.LedgerRepository) *MockDepositUnitOfWork_LedgerRepository_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockDepositUnitOfWork_LedgerRepository_Call) RunAndReturn(run func() ledgerports.LedgerRepository) *MockDepositUnitOfWork_LedgerRepository_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // OutboxRepository provides a mock function with no fields
-func (_m *MockDepositUnitOfWork) OutboxRepository() ports.OutboxRepository {
+func (_m *MockDepositUnitOfWork) OutboxRepository() ports.DepositOutboxRepository {
 	ret := _m.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for OutboxRepository")
 	}
 
-	var r0 ports.OutboxRepository
-	if rf, ok := ret.Get(0).(func() ports.OutboxRepository); ok {
+	var r0 ports.DepositOutboxRepository
+	if rf, ok := ret.Get(0).(func() ports.DepositOutboxRepository); ok {
 		r0 = rf()
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(ports.OutboxRepository)
+			r0 = ret.Get(0).(ports.DepositOutboxRepository)
 		}
 	}
 
@@ -152,12 +200,12 @@ func (_c *MockDepositUnitOfWork_OutboxRepository_Call) Run(run func()) *MockDepo
 	return _c
 }
 
-func (_c *MockDepositUnitOfWork_OutboxRepository_Call) Return(_a0 ports.OutboxRepository) *MockDepositUnitOfWork_OutboxRepository_Call {
+func (_c *MockDepositUnitOfWork_OutboxRepository_Call) Return(_a0 ports.DepositOutboxRepository) *MockDepositUnitOfWork_OutboxRepository_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *MockDepositUnitOfWork_OutboxRepository_Call) RunAndReturn(run func() ports.OutboxRepository) *MockDepositUnitOfWork_OutboxRepository_Call {
+func (_c *MockDepositUnitOfWork_OutboxRepository_Call) RunAndReturn(run func() ports.DepositOutboxRepository) *MockDepositUnitOfWork_OutboxRepository_Call {
 	_c.Call.Return(run)
 	return _c
 }

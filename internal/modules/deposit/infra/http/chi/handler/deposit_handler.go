@@ -8,8 +8,8 @@ import (
 	"auction/internal/modules/deposit/application/command"
 	"auction/internal/modules/deposit/application/query"
 	"auction/internal/modules/deposit/infra/http/dto"
-	httperrs "auction/internal/modules/deposit/infra/http/errs"
 	"auction/internal/shared/modules/authn"
+	"auction/internal/shared/modules/httperrs"
 	"auction/internal/shared/modules/logger"
 	"auction/internal/shared/sdk/http/request"
 	"auction/internal/shared/sdk/http/response"
@@ -92,6 +92,7 @@ func (depositHandler *DepositHandler) Create(w http.ResponseWriter, r *http.Requ
 	_ = response.JSON(w, http.StatusCreated, dto.CreateDepositResponse{
 		DepositID: output.DepositID,
 		Status:    output.Status,
+		AccountID: output.AccountID,
 	}, nil)
 }
 

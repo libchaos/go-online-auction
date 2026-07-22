@@ -3,6 +3,7 @@ package nats
 import (
 	"auction/internal/shared/modules/config"
 	"auction/pkg/nats"
+
 	natsgo "github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 )

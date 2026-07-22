@@ -44,6 +44,18 @@ type AuctionEndedData struct {
 	FinalAmount  *MoneyPayload `json:"final_amount,omitempty"`
 }
 
+type AuctionCreatedData struct {
+	ListingID          uint64     `json:"listing_id"`
+	TradingMode        string     `json:"trading_mode"`
+	StartTime          *time.Time `json:"start_time,omitempty"`
+	EndTime            time.Time  `json:"end_time"`
+	StartingPrice      *uint64    `json:"starting_price,omitempty"`
+	PriceStep          *uint64    `json:"price_step,omitempty"`
+	ReservePrice       *uint64    `json:"reserve_price,omitempty"`
+	AntiSnipeEnabled   bool       `json:"anti_snipe_enabled"`
+	ExtensionWindowSec int64      `json:"extension_window_sec"`
+}
+
 type MoneyPayload struct {
 	AmountInCents uint64 `json:"amount_in_cents"`
 }
@@ -82,6 +94,23 @@ func FromAuctionEnded(evt event.AuctionEndedEvent) (ports.OutboxEvent, error) {
 		data.FinalAmount = &MoneyPayload{AmountInCents: evt.FinalAmount().AmountInCents()}
 	}
 	return build(event.AuctionEndedEventType, evt.EventID(), evt.Timestamp(), evt.AuctionID(), data)
+}
+
+// FromAuctionCreated converts an AuctionCreatedEvent into an outbox record so
+// the auction lifecycle event stream is complete (create/start/close/place_bid).
+func FromAuctionCreated(evt event.AuctionCreatedEvent) (ports.OutboxEvent, error) {
+	data := AuctionCreatedData{
+		ListingID:          evt.ListingID(),
+		TradingMode:        evt.TradingMode(),
+		StartTime:          evt.StartTime(),
+		EndTime:            evt.EndTime(),
+		StartingPrice:      evt.StartingPrice(),
+		PriceStep:          evt.PriceStep(),
+		ReservePrice:       evt.ReservePrice(),
+		AntiSnipeEnabled:   evt.AntiSnipeEnabled(),
+		ExtensionWindowSec: evt.ExtensionWindowSec(),
+	}
+	return build(event.AuctionCreatedEventType, evt.EventID(), evt.Timestamp(), evt.AuctionID(), data)
 }
 
 // Decode parses an envelope from its wire format. Unknown schema versions are

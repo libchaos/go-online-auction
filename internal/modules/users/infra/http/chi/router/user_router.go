@@ -5,6 +5,7 @@ import (
 
 	"auction/internal/modules/users/infra/http/chi/handler"
 	"auction/internal/shared/modules/authn"
+	"auction/internal/shared/modules/authz"
 	"auction/pkg/httpserver"
 )
 
@@ -12,6 +13,7 @@ func RegisterUserRoutes(
 	server *httpserver.Server,
 	userHandler *handler.UserHandler,
 	middleware *authn.Middleware,
+	authzMiddleware *authz.Middleware,
 ) {
 	router := server.Router()
 
@@ -29,9 +31,8 @@ func RegisterUserRoutes(
 		r.Put("/me", userHandler.UpdateMe)
 		r.Put("/me/password", userHandler.ChangePassword)
 
-		adminOnly := authn.RequireRole(authn.RoleAdmin)
-		r.With(adminOnly).Get("/", userHandler.List)
-		r.With(adminOnly).Get("/{id}", userHandler.GetByID)
-		r.With(adminOnly).Patch("/{id}/role", userHandler.UpdateRole)
+		r.With(authzMiddleware.RequirePermission()).Get("/", userHandler.List)
+		r.With(authzMiddleware.RequirePermission()).Get("/{id}", userHandler.GetByID)
+		r.With(authzMiddleware.RequirePermission()).Patch("/{id}/role", userHandler.UpdateRole)
 	})
 }

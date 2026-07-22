@@ -1,0 +1,34 @@
+services:
+  postgres:
+    image: postgres:latest
+    volumes:
+      - postgres:/data/postgres
+    environment:
+      POSTGRES_DB: go-online-auction
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      PGDATA: /data/postgres
+    ports:
+      - '5432:5432'
+    networks:
+      - backend
+
+  nats:
+    image: nats:latest
+    container_name: nats
+    command: -js -sd /data
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    volumes:
+      - nats-data:/data
+    networks:
+      - backend
+
+volumes:
+  postgres-data:
+  nats-data:
+  postgres:
+
+networks:
+  backend:

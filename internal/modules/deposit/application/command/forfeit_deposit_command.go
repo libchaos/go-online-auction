@@ -6,6 +6,7 @@ import (
 	domainevent "auction/internal/modules/deposit/domain/event"
 	"auction/internal/modules/deposit/infra/event/envelope"
 	"auction/internal/modules/deposit/ports"
+	ledgerports "auction/internal/modules/ledger/ports"
 	"auction/internal/shared/modules/logger"
 )
 
@@ -21,20 +22,17 @@ type ForfeitDepositCommandOutput struct {
 const depositForfeitedStatus = "forfeited"
 
 type ForfeitDepositCommand struct {
-	uowFactory  ports.DepositUnitOfWorkFactory
-	paymentPort ports.PaymentPort
-	logger      logger.Logger
+	uowFactory ports.DepositUnitOfWorkFactory
+	logger     logger.Logger
 }
 
 func NewForfeitDepositCommand(
 	uowFactory ports.DepositUnitOfWorkFactory,
-	paymentPort ports.PaymentPort,
 	logger logger.Logger,
 ) *ForfeitDepositCommand {
 	return &ForfeitDepositCommand{
-		uowFactory:  uowFactory,
-		paymentPort: paymentPort,
-		logger:      logger,
+		uowFactory: uowFactory,
+		logger:     logger,
 	}
 }
 
@@ -57,12 +55,31 @@ func (command *ForfeitDepositCommand) Execute(
 		return ForfeitDepositCommandOutput{}, forfeitErr
 	}
 
-	if externalErr := command.paymentPort.Forfeit(ctx, deposit.ExternalReference()); externalErr != nil {
-		command.logger.Error().Err(externalErr).
-			Uint64("deposit_id", deposit.ID()).
-			Msg("failed to forfeit held funds with payment provider")
+	ledger := unitOfWork.LedgerRepository()
+	buyerAccountID, accountErr := buyerLedgerAccountID(ctx, ledger, deposit.UserID(), deposit.Currency())
+	if accountErr != nil {
+		return ForfeitDepositCommandOutput{}, accountErr
+	}
 
-		return ForfeitDepositCommandOutput{}, externalErr
+	platformAccountID, platformErr := platformLedgerAccountID(ctx, ledger, deposit.Currency())
+	if platformErr != nil {
+		return ForfeitDepositCommandOutput{}, platformErr
+	}
+
+	_, withdrawErr := ledger.WithdrawFromFrozen(ctx, ledgerports.WithdrawFromFrozenInput{
+		AccountID:             buyerAccountID,
+		CounterpartyAccountID: platformAccountID,
+		Amount:                deposit.Amount().AmountInCents(),
+		IdempotencyKey:        depositLedgerIdempotencyKey("forfeit", input.DepositID),
+		Reference:             deposit.Reference(),
+		Description:           "deposit forfeited as penalty, settled to platform",
+	})
+	if withdrawErr != nil {
+		command.logger.Error().Err(withdrawErr).
+			Uint64("deposit_id", deposit.ID()).
+			Msg("failed to withdraw frozen deposit funds in ledger")
+
+		return ForfeitDepositCommandOutput{}, withdrawErr
 	}
 
 	persisted, saveErr := unitOfWork.DepositRepository().Update(ctx, deposit)

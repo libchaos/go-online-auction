@@ -28,6 +28,7 @@ type AuctionModel struct {
 	version            uint64
 	createdAt          time.Time
 	updatedAt          time.Time
+	resolver           strategy.Resolver
 }
 
 func NewAuctionModel(listingID uint64, endTime time.Time) (AuctionModel, error) {
@@ -68,6 +69,7 @@ func NewAuctionModelWithMode(
 	antiSnipeEnabled bool,
 	extensionWindowSec int64,
 	scheduledStartTime *time.Time,
+	resolver strategy.Resolver,
 ) (AuctionModel, error) {
 	if err := validateNewAuction(listingID, endTime); err != nil {
 		return AuctionModel{}, err
@@ -114,6 +116,7 @@ func NewAuctionModelWithMode(
 		version:            1,
 		createdAt:          now,
 		updatedAt:          now,
+		resolver:           resolver,
 	}, nil
 }
 
@@ -177,6 +180,7 @@ func RestoreAuctionModelWithMode(
 	extensionWindowSec int64,
 	version uint64,
 	createdAt, updatedAt time.Time,
+	resolver strategy.Resolver,
 ) (AuctionModel, error) {
 	if id == 0 {
 		return AuctionModel{}, errs.ErrAuctionIDRequired
@@ -217,7 +221,19 @@ func RestoreAuctionModelWithMode(
 		version:            version,
 		createdAt:          createdAt.UTC(),
 		updatedAt:          updatedAt.UTC(),
+		resolver:           resolver,
 	}, nil
+}
+
+// strategyResolver returns the injected strategy resolver, falling back to a
+// freshly built default when the model was restored outside the DI graph (e.g.
+// in tests). There is no package-level mutable singleton, so tests stay isolated.
+func (a *AuctionModel) strategyResolver() strategy.Resolver {
+	if a.resolver != nil {
+		return a.resolver
+	}
+
+	return strategy.NewDefaultResolver()
 }
 
 func (a *AuctionModel) ID() uint64 {
@@ -328,8 +344,7 @@ func (a *AuctionModel) PlaceBid(amount MoneyModel) error {
 		return errs.ErrAuctionExpired
 	}
 
-	resolver := strategy.GetResolver()
-	selected, err := resolver.ForMode(a.tradingMode)
+	selected, err := a.strategyResolver().ForMode(a.tradingMode)
 	if err != nil {
 		return err
 	}
@@ -357,8 +372,7 @@ func (a *AuctionModel) Close(bids []BidModel) error {
 		return errs.ErrAuctionCanOnlyCloseFromActive
 	}
 
-	resolver := strategy.GetResolver()
-	selected, err := resolver.ForMode(a.tradingMode)
+	selected, err := a.strategyResolver().ForMode(a.tradingMode)
 	if err != nil {
 		return err
 	}

@@ -11,7 +11,7 @@ import (
 )
 
 const insertListingOutboxEvent = `-- name: InsertListingOutboxEvent :exec
-INSERT INTO event_outbox (event_id, event_type, schema_version, subject, payload, occurred_at)
+INSERT INTO listing_outbox (event_id, event_type, schema_version, subject, payload, occurred_at)
 VALUES ($1, $2, $3, $4, $5, $6)
 `
 
@@ -34,4 +34,56 @@ func (q *Queries) InsertListingOutboxEvent(ctx context.Context, arg InsertListin
 		arg.OccurredAt,
 	)
 	return err
+}
+
+const listUnpublishedOutboxEvents = `-- name: ListUnpublishedOutboxEvents :many
+SELECT id, event_id, event_type, schema_version, subject, payload, occurred_at, created_at, published_at
+FROM listing_outbox
+WHERE published_at IS NULL
+ORDER BY id ASC
+LIMIT $1
+`
+
+func (q *Queries) ListUnpublishedOutboxEvents(ctx context.Context, limit int32) ([]ListingOutbox, error) {
+	rows, err := q.db.Query(ctx, listUnpublishedOutboxEvents, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListingOutbox
+	for rows.Next() {
+		var i ListingOutbox
+		if err := rows.Scan(
+			&i.ID,
+			&i.EventID,
+			&i.EventType,
+			&i.SchemaVersion,
+			&i.Subject,
+			&i.Payload,
+			&i.OccurredAt,
+			&i.CreatedAt,
+			&i.PublishedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markOutboxEventPublished = `-- name: MarkOutboxEventPublished :execrows
+UPDATE listing_outbox
+SET published_at = NOW()
+WHERE id = $1 AND published_at IS NULL
+`
+
+func (q *Queries) MarkOutboxEventPublished(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.Exec(ctx, markOutboxEventPublished, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

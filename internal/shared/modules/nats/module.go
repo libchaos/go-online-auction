@@ -5,6 +5,7 @@ import (
 
 	"auction/internal/shared/modules/config"
 	"auction/internal/shared/modules/logger"
+
 	natsgo "github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"go.uber.org/fx"

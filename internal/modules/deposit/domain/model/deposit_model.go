@@ -151,7 +151,8 @@ func (deposit *DepositModel) Forfeit() error {
 }
 
 func (deposit *DepositModel) Cancel() error {
-	if deposit.status.String() != enum.EnumDepositStatusPending {
+	if deposit.status.String() != enum.EnumDepositStatusPending &&
+		deposit.status.String() != enum.EnumDepositStatusHeld {
 		return errs.ErrInvalidDepositTransition
 	}
 

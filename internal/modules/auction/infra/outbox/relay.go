@@ -5,7 +5,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 
 	"auction/internal/modules/auction/ports"
 	"auction/internal/shared/modules/logger"
@@ -132,7 +135,25 @@ func (r *Relay) drainBatch(ctx context.Context) (int, int) {
 
 		// Nats-Msg-Id enables server-side deduplication within the stream's
 		// duplicate window, making redelivery after a crash idempotent.
-		_, pubErr := r.js.Publish(ctx, evt.Subject, evt.Payload, jetstream.WithMsgID(evt.EventID))
+		//
+		// We also start a span for the publish and inject the active W3C trace
+		// context into the NATS message headers, so the trace continues across
+		// the message boundary. With no active upstream span the propagator
+		// injects nothing, keeping this safe. The core draining logic is
+		// otherwise unchanged.
+		traceCtx, span := otel.Tracer("auction/outbox").Start(ctx, "outbox.publish "+evt.Subject)
+		carrier := propagation.MapCarrier{}
+		otel.GetTextMapPropagator().Inject(traceCtx, carrier)
+		headers := nats.Header{}
+		for k, v := range carrier {
+			headers.Set(k, v)
+		}
+		_, pubErr := r.js.PublishMsg(traceCtx, &nats.Msg{
+			Subject: evt.Subject,
+			Data:    evt.Payload,
+			Header:  headers,
+		}, jetstream.WithMsgID(evt.EventID))
+		span.End()
 		if pubErr != nil {
 			// Stop the batch: publishing in order matters more than progress,
 			// and a broker outage would fail the remaining events anyway.

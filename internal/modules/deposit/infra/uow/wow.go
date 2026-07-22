@@ -5,24 +5,30 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"auction/internal/modules/deposit/ports"
+	depositports "auction/internal/modules/deposit/ports"
+	ledgerports "auction/internal/modules/ledger/ports"
 	shareduow "auction/internal/shared/modules/uow"
 )
 
-var _ ports.DepositUnitOfWork = (*DepositUnitOfWork)(nil)
+var _ depositports.DepositUnitOfWork = (*DepositUnitOfWork)(nil)
 
 type DepositUnitOfWork struct {
 	tx                pgx.Tx
-	depositRepository ports.DepositRepository
-	outboxRepository  ports.OutboxRepository
+	depositRepository depositports.DepositRepository
+	ledgerRepository  ledgerports.LedgerRepository
+	outboxRepository  depositports.DepositOutboxRepository
 	completed         bool
 }
 
-func (unitOfWork *DepositUnitOfWork) DepositRepository() ports.DepositRepository {
+func (unitOfWork *DepositUnitOfWork) DepositRepository() depositports.DepositRepository {
 	return unitOfWork.depositRepository
 }
 
-func (unitOfWork *DepositUnitOfWork) OutboxRepository() ports.OutboxRepository {
+func (unitOfWork *DepositUnitOfWork) LedgerRepository() ledgerports.LedgerRepository {
+	return unitOfWork.ledgerRepository
+}
+
+func (unitOfWork *DepositUnitOfWork) OutboxRepository() depositports.DepositOutboxRepository {
 	return unitOfWork.outboxRepository
 }
 

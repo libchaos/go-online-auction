@@ -5,6 +5,7 @@ import (
 
 	"auction/internal/shared/modules/logger"
 	"auction/pkg/httpserver"
+
 	"go.uber.org/fx"
 )
 

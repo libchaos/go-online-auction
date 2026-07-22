@@ -7,7 +7,7 @@ import (
 	"auction/internal/modules/deposit/ports"
 )
 
-var _ ports.OutboxRepository = (*PostgresOutboxRepository)(nil)
+var _ ports.DepositOutboxRepository = (*PostgresOutboxRepository)(nil)
 
 type PostgresOutboxRepository struct {
 	q *sqlcgen.Queries

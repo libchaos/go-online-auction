@@ -69,7 +69,7 @@ vuln-check:
 
 .PHONY: nilaway
 nilaway:
-	nilaway --include-pkgs="auction" --exclude-pkgs="vendor/" ./...
+	nilaway --include-pkgs="auction" --exclude-pkgs="vendor/,auction/tests/mocks" ./...
 
 .PHONY: test
 test:

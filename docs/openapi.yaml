@@ -1,0 +1,2481 @@
+openapi: 3.0.3
+
+info:
+  title: Go Online Auction API
+  description: |
+    Real-time online auction platform built with Go + React (hexagonal architecture,
+    CQRS, event-driven, Uber Fx). This document is generated from the actual route
+    registrations and HTTP DTOs in the codebase.
+
+    ## Conventions
+    - **Base URL / port**: the HTTP server listens on `:9000` (README's `8080` is a typo).
+    - **Auth**: most endpoints require `Authorization: Bearer <access_token>`.
+      Public endpoints (register / login / refresh / alipay notify) are marked `security: []`.
+    - **Response envelope**: successful responses are wrapped as `{"data": <payload>}`.
+    - **Error envelope**: errors are wrapped as
+      `{"error": {"code": "XYZ_01", "message": "...", "status": 400, "details": [{"field":"...","message":"..."}]}}`.
+    - **Money**: integer fields named `*_in_cents` / `amount_in_cents` are in the smallest
+      currency unit (分 / cents). `currency` is an ISO-4217 code such as `CNY`.
+    - **RBAC**: resource endpoints guarded by Casbin require the caller's `user_id` to be
+      mapped (via the g relation) to a role that holds the matching policy. Admin-only
+      endpoints additionally require `users.role = admin`.
+  version: 1.0.0
+  contact:
+    name: go-online-auction
+
+servers:
+  - url: http://localhost:9000
+    description: Local development server
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+    description: Registration, login, token refresh, logout.
+  - name: Users
+    description: Authenticated user profile & admin user management.
+  - name: RBAC
+    description: Casbin policy and user→role (g) assignment management. Admin only.
+  - name: Auctions
+    description: Auction lifecycle (create / list / detail / events / start / cancel).
+  - name: Bids
+    description: Place bids on an auction.
+  - name: Deposits
+    description: Margin deposits used to bid / settle.
+  - name: Ledger
+    description: Internal fund ledger (accounts, transfer, freeze, withdraw).
+  - name: Catalog
+    description: Categories, SPUs and SKUs.
+  - name: Notifications
+    description: In-app notification center, preferences and watchlist.
+  - name: Payment
+    description: Recharge (face-to-face pay) and withdrawal (Alipay) plus callback.
+  - name: Realtime
+    description: WebSocket and Server-Sent-Events realtime channels.
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token issued by POST /api/v1/auth/login or /refresh.
+
+  parameters:
+    limit:
+      name: limit
+      in: query
+      description: Maximum number of items to return. Server default applies if omitted.
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 20
+      example: 20
+    offset:
+      name: offset
+      in: query
+      description: Number of items to skip (for pagination).
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+      example: 0
+
+  responses:
+    BadRequest:
+      description: 400 Bad Request — validation failure or invalid request body.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: INVALID_REQUEST
+              message: body contains unknown key spu_id
+              details:
+                - field: spu_id
+                  message: unknown field
+    Unauthorized:
+      description: 401 Unauthorized — missing or invalid access token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: AUTH_01
+              message: Missing or invalid access token
+    Forbidden:
+      description: 403 Forbidden — authenticated but not permitted (RBAC policy / role mismatch).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: FORBIDDEN
+              message: access denied
+    NotFound:
+      description: 404 Not Found — resource does not exist.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: DEPOSIT_01
+              message: Deposit not found
+    InternalServerError:
+      description: 500 Internal Server Error — unexpected server failure.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: internal_server_error
+              message: Internal server error
+
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorObject'
+    ErrorObject:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Stable machine-readable error code (e.g. AUTH_01, DEPOSIT_03).
+          example: DEPOSIT_03
+        message:
+          type: string
+          description: Human-readable message.
+          example: A deposit is required to bid on this auction
+        details:
+          type: array
+          description: Optional per-field validation details.
+          items:
+            $ref: '#/components/schemas/ErrorDetail'
+    ErrorDetail:
+      type: object
+      properties:
+        field:
+          type: string
+          example: amount_in_cents
+        message:
+          type: string
+          example: must be greater than 0
+
+    # ----------------------------- Auth -----------------------------
+    RegisterRequest:
+      type: object
+      required: [name, email, password]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          example: alice
+        email:
+          type: string
+          format: email
+          example: alice@example.com
+        password:
+          type: string
+          minLength: 8
+          description: Plain password; minimum 8 characters enforced by domain.
+          example: Str0ng#Pass
+        role:
+          type: string
+          enum: [admin, seller, bidder]
+          description: Optional initial role; defaults to bidder if omitted.
+          example: bidder
+    RegisterResponse:
+      type: object
+      required: [id, name, email, role, status, created_at]
+      properties:
+        id: { type: integer, example: 1001 }
+        name: { type: string, example: alice }
+        email: { type: string, example: alice@example.com }
+        role: { type: string, enum: [admin, seller, bidder], example: bidder }
+        status: { type: string, enum: [active, inactive, blocked], example: active }
+        created_at: { type: string, format: date-time, example: "2026-07-22T09:00:00Z" }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, example: alice@example.com }
+        password: { type: string, example: Str0ng#Pass }
+    LoginResponse:
+      type: object
+      required: [access_token, token_type, expires_at, refresh_token, user_id, role]
+      properties:
+        access_token: { type: string, example: eyJhbGciOi... }
+        token_type: { type: string, example: Bearer }
+        expires_at: { type: string, format: date-time, example: "2026-07-22T10:00:00Z" }
+        refresh_token: { type: string, example: def50200... }
+        user_id: { type: integer, example: 1001 }
+        role: { type: string, enum: [admin, seller, bidder], example: bidder }
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token: { type: string, example: def50200... }
+    LogoutRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token: { type: string, example: def50200... }
+
+    # ----------------------------- Users -----------------------------
+    UpdateProfileRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, example: alice-updated }
+    ChangePasswordRequest:
+      type: object
+      required: [current_password, new_password]
+      properties:
+        current_password: { type: string, example: Str0ng#Pass }
+        new_password:
+          type: string
+          minLength: 8
+          example: N3w#Str0ng
+    UpdateUserRoleRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [admin, seller, bidder]
+          example: seller
+    UserResponse:
+      type: object
+      required: [id, name, email, role, status, created_at]
+      properties:
+        id: { type: integer, example: 1001 }
+        name: { type: string, example: alice }
+        email: { type: string, example: alice@example.com }
+        role: { type: string, enum: [admin, seller, bidder], example: bidder }
+        status: { type: string, enum: [active, inactive, blocked], example: active }
+        created_at: { type: string, format: date-time, example: "2026-07-22T09:00:00Z" }
+        updated_at: { type: string, format: date-time, example: "2026-07-22T09:30:00Z" }
+    UserListResponse:
+      type: object
+      required: [users, total_count, limit, offset]
+      properties:
+        users:
+          type: array
+          items: { $ref: '#/components/schemas/UserResponse' }
+        total_count: { type: integer, example: 42 }
+        limit: { type: integer, example: 20 }
+        offset: { type: integer, example: 0 }
+
+    # ----------------------------- RBAC -----------------------------
+    PolicyRequest:
+      type: object
+      required: [sub, obj, act]
+      properties:
+        sub:
+          type: string
+          description: Subject — a role (e.g. seller) or user id.
+          example: seller
+        obj:
+          type: string
+          description: Object — a Casbin keyMatch4 path pattern, e.g. /api/v1/auctions/*.
+          example: /api/v1/auctions/*
+        act:
+          type: string
+          description: Action — HTTP method or * for any.
+          example: "*"
+    RoleAssignmentRequest:
+      type: object
+      required: [user_id, role]
+      properties:
+        user_id:
+          type: integer
+          description: Target user id.
+          example: 1002
+        role:
+          type: string
+          enum: [admin, seller, bidder]
+          example: admin
+
+    # ----------------------------- Auctions -----------------------------
+    CreateAuctionRequest:
+      type: object
+      required: [listing_id, end_time, trading_mode]
+      properties:
+        listing_id:
+          type: integer
+          description: SPU/SKU listing this auction is for.
+          example: 55
+        end_time:
+          type: string
+          format: date-time
+          example: "2026-07-23T12:00:00Z"
+        trading_mode:
+          type: string
+          enum: [english, dutch, sealed_bid, vickrey, fixed_price, ebay_proxy]
+          example: english
+        starting_price:
+          type: integer
+          nullable: true
+          description: Opening price in cents.
+          example: 10000
+        price_step:
+          type: integer
+          nullable: true
+          description: Minimum increment in cents (english).
+          example: 500
+        reserve_price:
+          type: integer
+          nullable: true
+          description: Hidden reserve in cents.
+          example: 8000
+        anti_snipe_enabled:
+          type: boolean
+          description: Extend end time on late bids.
+          example: true
+        extension_window_sec:
+          type: integer
+          description: Seconds to extend when a late bid arrives.
+          example: 120
+        start_time:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-07-22T12:00:00Z"
+    AuctionResponse:
+      type: object
+      required: [id, listing_id, state, trading_mode, end_time, anti_snipe_enabled, extension_window_sec, created_at]
+      properties:
+        id: { type: integer, example: 77 }
+        listing_id: { type: integer, example: 55 }
+        state: { type: string, enum: [draft, active, closed, cancelled], example: active }
+        trading_mode: { type: string, enum: [english, dutch, sealed_bid, vickrey, fixed_price, ebay_proxy], example: english }
+        start_time: { type: string, format: date-time, nullable: true, example: "2026-07-22T12:00:00Z" }
+        end_time: { type: string, format: date-time, example: "2026-07-23T12:00:00Z" }
+        starting_price: { type: integer, nullable: true, example: 10000 }
+        price_step: { type: integer, nullable: true, example: 500 }
+        reserve_price: { type: integer, nullable: true, example: 8000 }
+        current_price: { type: integer, nullable: true, example: 10500 }
+        highest_bid_amount_in_cents: { type: integer, nullable: true, example: 10500 }
+        winner_user_id: { type: integer, nullable: true, example: 1001 }
+        winning_bid_id: { type: integer, nullable: true, example: 9001 }
+        winning_bid_amount_in_cents: { type: integer, nullable: true, example: 10500 }
+        anti_snipe_enabled: { type: boolean, example: true }
+        extension_window_sec: { type: integer, example: 120 }
+        created_at: { type: string, format: date-time, example: "2026-07-22T11:00:00Z" }
+    AuctionDetailResponse:
+      type: object
+      required: [auction, bids]
+      properties:
+        auction: { $ref: '#/components/schemas/AuctionResponse' }
+        bids:
+          type: array
+          items: { $ref: '#/components/schemas/BidResponse' }
+    AuctionListResponse:
+      type: object
+      required: [auctions, total_count, limit, offset]
+      properties:
+        auctions:
+          type: array
+          items: { $ref: '#/components/schemas/AuctionResponse' }
+        total_count: { type: integer, example: 13 }
+        limit: { type: integer, example: 20 }
+        offset: { type: integer, example: 0 }
+    AuctionEventResponse:
+      type: object
+      required: [event_type, event_id, schema_version, timestamp, auction_id, data]
+      properties:
+        event_type: { type: string, example: auction_started }
+        event_id: { type: string, example: "evt_abc123" }
+        schema_version: { type: integer, example: 1 }
+        timestamp: { type: string, format: date-time, example: "2026-07-22T12:00:00Z" }
+        auction_id: { type: integer, example: 77 }
+        data:
+          type: object
+          description: Event-specific payload (opaque JSON).
+          example: { "starting_price": 10000 }
+    AuctionEventListResponse:
+      type: object
+      required: [events, total_count]
+      properties:
+        events:
+          type: array
+          items: { $ref: '#/components/schemas/AuctionEventResponse' }
+        total_count: { type: integer, example: 8 }
+    PlaceBidRequest:
+      type: object
+      required: [amount_in_cents]
+      properties:
+        amount_in_cents:
+          type: integer
+          minimum: 1
+          description: Bid amount in cents.
+          example: 10500
+        max_amount_in_cents:
+          type: integer
+          nullable: true
+          description: Ceiling for proxy/auto bidding (ebay_proxy / vickrey).
+          example: 20000
+    PlaceBidAcceptedResponse:
+      type: object
+      required: [idempotency_key, status]
+      properties:
+        idempotency_key: { type: string, example: "idemp_7f3a" }
+        status: { type: string, example: accepted }
+    BidResponse:
+      type: object
+      required: [id, auction_id, user_id, amount_in_cents, created_at]
+      properties:
+        id: { type: integer, example: 9001 }
+        auction_id: { type: integer, example: 77 }
+        user_id: { type: integer, example: 1001 }
+        amount_in_cents: { type: integer, example: 10500 }
+        max_amount_in_cents: { type: integer, nullable: true, example: 20000 }
+        created_at: { type: string, format: date-time, example: "2026-07-22T12:05:00Z" }
+
+    # ----------------------------- Deposits -----------------------------
+    CreateDepositRequest:
+      type: object
+      required: [auction_id, amount_in_cents, currency]
+      properties:
+        auction_id:
+          type: integer
+          description: Auction this margin deposit is for.
+          example: 77
+        amount_in_cents:
+          type: integer
+          minimum: 1
+          example: 5000
+        currency:
+          type: string
+          example: CNY
+    CreateDepositResponse:
+      type: object
+      required: [deposit_id, status, account_id]
+      properties:
+        deposit_id: { type: integer, example: 3001 }
+        status: { type: string, enum: [pending, held, released, applied, forfeited], example: pending }
+        account_id: { type: integer, example: 5001 }
+    DepositResponse:
+      type: object
+      required: [deposit_id, user_id, auction_id, amount_in_cents, currency, status, version, created_at, updated_at]
+      properties:
+        deposit_id: { type: integer, example: 3001 }
+        user_id: { type: integer, example: 1001 }
+        auction_id: { type: integer, example: 77 }
+        amount_in_cents: { type: integer, example: 5000 }
+        currency: { type: string, example: CNY }
+        status: { type: string, enum: [pending, held, released, applied, forfeited], example: held }
+        external_reference: { type: string, nullable: true, example: "pay_9988" }
+        reference: { type: string, nullable: true, example: "auction-77-bidder-1001" }
+        version: { type: integer, example: 3 }
+        created_at: { type: string, example: "2026-07-22T09:10:00Z" }
+        updated_at: { type: string, example: "2026-07-22T09:12:00Z" }
+    ListDepositsResponse:
+      type: object
+      required: [deposits]
+      properties:
+        deposits:
+          type: array
+          items: { $ref: '#/components/schemas/DepositResponse' }
+    EligibilityResponse:
+      type: object
+      required: [eligible]
+      properties:
+        eligible: { type: boolean, example: true }
+    ApplyDepositRequest:
+      type: object
+      required: [capture_amount_in_cents]
+      properties:
+        capture_amount_in_cents:
+          type: integer
+          minimum: 1
+          example: 5000
+    ActionDepositResponse:
+      type: object
+      required: [deposit_id, status]
+      properties:
+        deposit_id: { type: integer, example: 3001 }
+        status: { type: string, enum: [pending, held, released, applied, forfeited], example: released }
+
+    # ----------------------------- Ledger -----------------------------
+    CreateAccountRequest:
+      type: object
+      required: [owner, currency]
+      properties:
+        owner:
+          type: string
+          description: Owner key (user id or external reference).
+          example: "1001"
+        currency: { type: string, example: CNY }
+    AccountResponse:
+      type: object
+      required: [account_id, owner, balance, frozen_balance, currency, version, created_at, updated_at]
+      properties:
+        account_id: { type: integer, example: 5001 }
+        owner: { type: string, example: "1001" }
+        balance: { type: integer, example: 120000 }
+        frozen_balance: { type: integer, example: 5000 }
+        currency: { type: string, example: CNY }
+        version: { type: integer, example: 7 }
+        created_at: { type: string, example: "2026-07-22T08:00:00Z" }
+        updated_at: { type: string, example: "2026-07-22T08:30:00Z" }
+    TransferRequest:
+      type: object
+      required: [from_account_id, to_account_id, amount]
+      properties:
+        from_account_id: { type: integer, example: 5001 }
+        to_account_id: { type: integer, example: 5002 }
+        amount:
+          type: integer
+          minimum: 1
+          example: 3000
+        idempotency_key: { type: string, nullable: true, example: "tr_abc" }
+        reference: { type: string, nullable: true, example: "settle-auction-77" }
+        description: { type: string, nullable: true, example: "winner payout" }
+    FreezeRequest:
+      type: object
+      required: [account_id, amount]
+      properties:
+        account_id: { type: integer, example: 5001 }
+        amount: { type: integer, minimum: 1, example: 5000 }
+        idempotency_key: { type: string, nullable: true }
+        reference: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+    UnfreezeRequest:
+      type: object
+      required: [account_id, amount]
+      properties:
+        account_id: { type: integer, example: 5001 }
+        amount: { type: integer, minimum: 1, example: 5000 }
+        idempotency_key: { type: string, nullable: true }
+        reference: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+    WithdrawFromFrozenRequest:
+      type: object
+      required: [account_id, counterparty_account_id, amount]
+      properties:
+        account_id: { type: integer, example: 5001 }
+        counterparty_account_id: { type: integer, example: 5002 }
+        amount: { type: integer, minimum: 1, example: 5000 }
+        idempotency_key: { type: string, nullable: true }
+        reference: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+    OperationResponse:
+      type: object
+      required: [operation_id, account_id, operation_type, amount, idempotency_key, status, created_at, updated_at]
+      properties:
+        operation_id: { type: integer, example: 8001 }
+        account_id: { type: integer, example: 5001 }
+        counterparty_account_id: { type: integer, nullable: true, example: 5002 }
+        operation_type: { type: string, example: freeze }
+        amount: { type: integer, example: 5000 }
+        idempotency_key: { type: string, example: "op_xyz" }
+        status: { type: string, example: success }
+        reference: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        created_at: { type: string, example: "2026-07-22T08:30:00Z" }
+        updated_at: { type: string, example: "2026-07-22T08:30:00Z" }
+    TransferResponse:
+      type: object
+      required: [transfer_id, from_account_id, to_account_id, amount, idempotency_key, created_at]
+      properties:
+        transfer_id: { type: integer, example: 9001 }
+        from_account_id: { type: integer, example: 5001 }
+        to_account_id: { type: integer, example: 5002 }
+        amount: { type: integer, example: 3000 }
+        idempotency_key: { type: string, example: "tr_abc" }
+        created_at: { type: string, example: "2026-07-22T08:31:00Z" }
+
+    # ----------------------------- Catalog -----------------------------
+    CreateCategoryRequest:
+      type: object
+      required: [name, sort_order]
+      properties:
+        name: { type: string, example: Electronics }
+        parent_id: { type: integer, nullable: true, example: 10 }
+        sort_order: { type: integer, example: 1 }
+    UpdateCategoryRequest:
+      type: object
+      required: [name, sort_order]
+      properties:
+        name: { type: string, example: Electronics }
+        sort_order: { type: integer, example: 2 }
+    CategoryResponse:
+      type: object
+      required: [id, name, depth, sort_order, created_at, updated_at]
+      properties:
+        id: { type: integer, example: 12 }
+        name: { type: string, example: Electronics }
+        parent_id: { type: integer, nullable: true, example: 10 }
+        depth: { type: integer, example: 2 }
+        path: { type: string, nullable: true, example: "10/12" }
+        sort_order: { type: integer, example: 2 }
+        created_at: { type: string, format: date-time, example: "2026-07-20T10:00:00Z" }
+        updated_at: { type: string, format: date-time, example: "2026-07-20T10:00:00Z" }
+    CategoryListResponse:
+      type: object
+      required: [categories]
+      properties:
+        categories:
+          type: array
+          items: { $ref: '#/components/schemas/CategoryResponse' }
+    CategoryTreeNode:
+      type: object
+      required: [id, name, depth, sort_order, created_at, updated_at]
+      properties:
+        id: { type: integer, example: 10 }
+        name: { type: string, example: Electronics }
+        parent_id: { type: integer, nullable: true, example: 0 }
+        depth: { type: integer, example: 1 }
+        path: { type: string, nullable: true, example: "10" }
+        sort_order: { type: integer, example: 1 }
+        children:
+          type: array
+          nullable: true
+          items: { $ref: '#/components/schemas/CategoryTreeNode' }
+        created_at: { type: string, format: date-time, example: "2026-07-20T10:00:00Z" }
+        updated_at: { type: string, format: date-time, example: "2026-07-20T10:00:00Z" }
+    CategoryTreeResponse:
+      type: object
+      required: [roots]
+      properties:
+        roots:
+          type: array
+          items: { $ref: '#/components/schemas/CategoryTreeNode' }
+    CreateSpuRequest:
+      type: object
+      required: [title, description, category_id]
+      properties:
+        title: { type: string, example: Vintage Camera }
+        description: { type: string, example: A working 35mm film camera. }
+        category_id: { type: integer, example: 12 }
+        brand: { type: string, nullable: true, example: Canon }
+        images:
+          type: array
+          nullable: true
+          items: { type: string }
+          example: ["https://cdn.example.com/c1.jpg"]
+    UpdateSpuRequest:
+      type: object
+      required: [title, description, category_id]
+      properties:
+        title: { type: string, example: Vintage Camera }
+        description: { type: string, example: A working 35mm film camera. }
+        category_id: { type: integer, example: 12 }
+        brand: { type: string, nullable: true, example: Canon }
+        images:
+          type: array
+          nullable: true
+          items: { type: string }
+    SpuResponse:
+      type: object
+      required: [id, title, description, category_id, status, images, created_at, updated_at]
+      properties:
+        id: { type: integer, example: 55 }
+        title: { type: string, example: Vintage Camera }
+        description: { type: string, example: A working 35mm film camera. }
+        category_id: { type: integer, example: 12 }
+        brand: { type: string, nullable: true, example: Canon }
+        images:
+          type: array
+          items: { type: string }
+          example: ["https://cdn.example.com/c1.jpg"]
+        status: { type: string, enum: [draft, published, off_shelf], example: published }
+        skus:
+          type: array
+          nullable: true
+          items: { $ref: '#/components/schemas/SkuResponse' }
+        created_at: { type: string, format: date-time, example: "2026-07-21T10:00:00Z" }
+        updated_at: { type: string, format: date-time, example: "2026-07-21T10:00:00Z" }
+    SpuListResponse:
+      type: object
+      required: [spus, total_count, limit, offset]
+      properties:
+        spus:
+          type: array
+          items: { $ref: '#/components/schemas/SpuResponse' }
+        total_count: { type: integer, example: 24 }
+        limit: { type: integer, example: 20 }
+        offset: { type: integer, example: 0 }
+    CreateSkuRequest:
+      type: object
+      required: [spec_values, price_in_cents, quantity]
+      properties:
+        spec_values:
+          type: object
+          additionalProperties: { type: string }
+          description: Spec name → value map (e.g. color → red).
+          example: { "color": "red", "storage": "64gb" }
+        price_in_cents:
+          type: integer
+          minimum: 0
+          example: 19900
+        quantity:
+          type: integer
+          minimum: 0
+          example: 3
+    UpdateSkuRequest:
+      type: object
+      required: [spec_values, price_in_cents, quantity]
+      properties:
+        spec_values:
+          type: object
+          additionalProperties: { type: string }
+          example: { "color": "red" }
+        price_in_cents: { type: integer, minimum: 0, example: 19900 }
+        quantity: { type: integer, minimum: 0, example: 3 }
+    SkuResponse:
+      type: object
+      required: [id, spu_id, spec_values, price_in_cents, quantity, status, created_at, updated_at]
+      properties:
+        id: { type: integer, example: 7001 }
+        spu_id: { type: integer, example: 55 }
+        spec_values:
+          type: object
+          additionalProperties: { type: string }
+          example: { "color": "red" }
+        price_in_cents: { type: integer, example: 19900 }
+        quantity: { type: integer, example: 3 }
+        status: { type: string, enum: [draft, published, off_shelf], example: published }
+        created_at: { type: string, format: date-time, example: "2026-07-21T10:05:00Z" }
+        updated_at: { type: string, format: date-time, example: "2026-07-21T10:05:00Z" }
+
+    # ----------------------------- Notifications / Watchlist -----------------------------
+    NotificationResponse:
+      type: object
+      required: [notification_id, user_id, category, type, title, body, channels, created_at]
+      properties:
+        notification_id: { type: integer, example: 2001 }
+        user_id: { type: integer, example: 1001 }
+        category: { type: string, enum: [payment, deposit, auction, listing, system], example: deposit }
+        type:
+          type: string
+          enum:
+            - recharge_success
+            - withdrawal_completed
+            - withdrawal_failed
+            - deposit_held
+            - deposit_released
+            - deposit_applied
+            - deposit_forfeited
+            - outbid
+            - auction_started
+            - auction_ended
+            - listing_published
+            - listing_off_shelf
+          example: deposit_held
+        title: { type: string, example: Deposit held }
+        body: { type: string, example: Your margin deposit of ¥50.00 is now held. }
+        payload:
+          type: object
+          nullable: true
+          description: Opaque JSON payload.
+          example: { "auction_id": 77, "amount_in_cents": 5000 }
+        channels:
+          type: array
+          items: { type: string, enum: [in_app, email] }
+          example: ["in_app"]
+        read_at: { type: string, nullable: true, example: "2026-07-22T09:20:00Z" }
+        created_at: { type: string, example: "2026-07-22T09:15:00Z" }
+    NotificationListResponse:
+      type: object
+      required: [items, limit, offset]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/NotificationResponse' }
+        limit: { type: integer, example: 20 }
+        offset: { type: integer, example: 0 }
+    UnreadCountResponse:
+      type: object
+      required: [unread_count]
+      properties:
+        unread_count: { type: integer, example: 3 }
+    MarkAllReadResponse:
+      type: object
+      required: [updated_count]
+      properties:
+        updated_count: { type: integer, example: 3 }
+    PreferencesResponse:
+      type: object
+      required: [user_id, preferences, updated_at]
+      properties:
+        user_id: { type: integer, example: 1001 }
+        preferences:
+          type: object
+          description: |
+            Map of category → (channel → enabled). Categories: payment, deposit, auction,
+            listing, system. Channels: in_app, email.
+          additionalProperties:
+            type: object
+            additionalProperties: { type: boolean }
+          example:
+            payment: { in_app: true, email: true }
+            deposit: { in_app: true, email: true }
+            auction: { in_app: true, email: false }
+            listing: { in_app: true, email: false }
+            system: { in_app: true, email: true }
+        updated_at: { type: string, example: "2026-07-22T09:00:00Z" }
+    UpdatePreferencesRequest:
+      type: object
+      required: [preferences]
+      properties:
+        preferences:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: { type: boolean }
+          example:
+            auction: { in_app: true, email: true }
+    WatchResponse:
+      type: object
+      required: [watch_id, user_id, spu_id, created_at]
+      properties:
+        watch_id: { type: integer, example: 4001 }
+        user_id: { type: integer, example: 1001 }
+        spu_id: { type: integer, example: 55 }
+        created_at: { type: string, example: "2026-07-22T09:00:00Z" }
+    WatchListResponse:
+      type: object
+      required: [items, limit, offset]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/WatchResponse' }
+        limit: { type: integer, example: 20 }
+        offset: { type: integer, example: 0 }
+    CreateWatchRequest:
+      type: object
+      required: [spu_id]
+      properties:
+        spu_id: { type: integer, example: 55 }
+
+    # ----------------------------- Payment -----------------------------
+    PaymentCreateDepositRequest:
+      type: object
+      required: [amount_in_cents, currency]
+      properties:
+        amount_in_cents:
+          type: integer
+          minimum: 1
+          example: 10000
+        currency: { type: string, example: CNY }
+    PaymentCreateDepositResponse:
+      type: object
+      required: [payment_id, out_trade_no, qr_code_url, status]
+      properties:
+        payment_id: { type: integer, example: 6001 }
+        out_trade_no: { type: string, example: "OTN_20260722_001" }
+        qr_code_url: { type: string, format: uri, example: "https://qr.example.com/x/abc" }
+        status: { type: string, example: pending }
+    PaymentDepositResponse:
+      type: object
+      required: [payment_id, user_id, amount_in_cents, currency, status, out_trade_no, version, created_at, updated_at]
+      properties:
+        payment_id: { type: integer, example: 6001 }
+        user_id: { type: integer, example: 1001 }
+        amount_in_cents: { type: integer, example: 10000 }
+        currency: { type: string, example: CNY }
+        status: { type: string, example: paid }
+        out_trade_no: { type: string, example: "OTN_20260722_001" }
+        qr_code_url: { type: string, nullable: true, format: uri, example: "https://qr.example.com/x/abc" }
+        alipay_trade_no: { type: string, nullable: true, example: "2026072222001" }
+        version: { type: integer, example: 2 }
+        created_at: { type: string, example: "2026-07-22T09:00:00Z" }
+        updated_at: { type: string, example: "2026-07-22T09:01:00Z" }
+    CreateWithdrawalRequest:
+      type: object
+      required: [amount_in_cents, currency, alipay_account, alipay_real_name]
+      properties:
+        amount_in_cents:
+          type: integer
+          minimum: 1
+          example: 8000
+        currency: { type: string, example: CNY }
+        alipay_account: { type: string, example: "alice@alipay.com" }
+        alipay_real_name: { type: string, example: "Alice" }
+    CreateWithdrawalResponse:
+      type: object
+      required: [withdrawal_id, out_biz_no, status]
+      properties:
+        withdrawal_id: { type: integer, example: 6101 }
+        out_biz_no: { type: string, example: "OB_20260722_001" }
+        status: { type: string, example: pending }
+    WithdrawalResponse:
+      type: object
+      required: [withdrawal_id, user_id, ledger_account_id, alipay_account, alipay_real_name, amount_in_cents, currency, status, out_biz_no, version, created_at, updated_at]
+      properties:
+        withdrawal_id: { type: integer, example: 6101 }
+        user_id: { type: integer, example: 1001 }
+        ledger_account_id: { type: integer, example: 5001 }
+        alipay_account: { type: string, example: "alice@alipay.com" }
+        alipay_real_name: { type: string, example: "Alice" }
+        amount_in_cents: { type: integer, example: 8000 }
+        currency: { type: string, example: CNY }
+        status: { type: string, example: completed }
+        out_biz_no: { type: string, example: "OB_20260722_001" }
+        alipay_order_id: { type: string, nullable: true, example: "2026072222002" }
+        fail_reason: { type: string, nullable: true, example: "ACCOUNT_NOT_EXIST" }
+        version: { type: integer, example: 4 }
+        created_at: { type: string, example: "2026-07-22T09:30:00Z" }
+        updated_at: { type: string, example: "2026-07-22T09:32:00Z" }
+
+paths:
+  # ============================ Auth ============================
+  /api/v1/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '200':
+          description: Registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/RegisterResponse' } }
+              example:
+                data:
+                  id: 1001
+                  name: alice
+                  email: alice@example.com
+                  role: bidder
+                  status: active
+                  created_at: "2026-07-22T09:00:00Z"
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login and obtain tokens
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Logged in
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/LoginResponse' } }
+              example:
+                data:
+                  access_token: eyJhbGciOi...
+                  token_type: Bearer
+                  expires_at: "2026-07-22T10:00:00Z"
+                  refresh_token: def50200...
+                  user_id: 1001
+                  role: bidder
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
+      responses:
+        '200':
+          description: New tokens issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/LoginResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout (revoke refresh token)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LogoutRequest' }
+      responses:
+        '204':
+          description: Logged out (no content)
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ============================ Users ============================
+  /api/v1/users/me:
+    get:
+      tags: [Users]
+      summary: Get the current user's profile
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/UserResponse' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    put:
+      tags: [Users]
+      summary: Update the current user's profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateProfileRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/UserResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/users/me/password:
+    put:
+      tags: [Users]
+      summary: Change the current user's password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/UserResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/users:
+    get:
+      tags: [Users]
+      summary: List users (admin scoped)
+      parameters:
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/UserListResponse' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/users/{id}:
+    get:
+      tags: [Users]
+      summary: Get a user by id (admin scoped)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 1001
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/UserResponse' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Users]
+      summary: Update a user's role (admin scoped)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 1002
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateUserRoleRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/UserResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ============================ RBAC ============================
+  /api/v1/rbac/policies:
+    get:
+      tags: [RBAC]
+      summary: List Casbin policies (admin)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        sub: { type: string }
+                        obj: { type: string }
+                        act: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [RBAC]
+      summary: Add a Casbin policy (admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PolicyRequest' }
+      responses:
+        '200': { description: Policy added }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [RBAC]
+      summary: Remove a Casbin policy (admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PolicyRequest' }
+      responses:
+        '200': { description: Policy removed }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/rbac/role-assignments:
+    get:
+      tags: [RBAC]
+      summary: List user→role (g) assignments (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: user_id
+          in: query
+          required: false
+          schema: { type: integer }
+          description: Filter by user id.
+          example: 1002
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        user_id: { type: integer }
+                        role: { type: string, enum: [admin, seller, bidder] }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [RBAC]
+      summary: Assign a role to a user (admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RoleAssignmentRequest' }
+      responses:
+        '200': { description: Assigned }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [RBAC]
+      summary: Revoke a single user→role assignment (admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RoleAssignmentRequest' }
+      responses:
+        '200': { description: Revoked }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/rbac/role-assignments/{userID}:
+    delete:
+      tags: [RBAC]
+      summary: Revoke all roles for a user (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userID
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 1002
+      responses:
+        '200': { description: All revoked }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ============================ Auctions ============================
+  /api/v1/auctions:
+    post:
+      tags: [Auctions]
+      summary: Create an auction (seller)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateAuctionRequest' }
+      responses:
+        '200':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/AuctionResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    get:
+      tags: [Auctions]
+      summary: List auctions (public)
+      security: []
+      parameters:
+        - name: state
+          in: query
+          required: false
+          schema: { type: string, enum: [draft, active, closed, cancelled] }
+          example: active
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/AuctionListResponse' } }
+
+  /api/v1/auctions/{id}:
+    get:
+      tags: [Auctions]
+      summary: Get auction detail with bids (public)
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 77
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/AuctionDetailResponse' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/auctions/{id}/events:
+    get:
+      tags: [Auctions]
+      summary: Replay auction event stream (public)
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 77
+        - name: from
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+          description: Inclusive lower bound timestamp.
+        - name: until
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+          description: Exclusive upper bound timestamp.
+        - $ref: '#/components/parameters/limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/AuctionEventListResponse' } }
+
+  /api/v1/auctions/{id}/start:
+    put:
+      tags: [Auctions]
+      summary: Start an auction (seller)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 77
+      responses:
+        '200':
+          description: Started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/AuctionResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/auctions/{id}/cancel:
+    put:
+      tags: [Auctions]
+      summary: Cancel an auction (seller)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 77
+      responses:
+        '200':
+          description: Cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/AuctionResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/auctions/{id}/bids:
+    post:
+      tags: [Bids]
+      summary: Place a bid
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 77
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlaceBidRequest' }
+      responses:
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/PlaceBidAcceptedResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ============================ Deposits ============================
+  /api/v1/deposits:
+    post:
+      tags: [Deposits]
+      summary: Create a margin deposit (seller)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateDepositRequest' }
+      responses:
+        '200':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/CreateDepositResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    get:
+      tags: [Deposits]
+      summary: List the current user's deposits
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/ListDepositsResponse' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/deposits/{id}:
+    get:
+      tags: [Deposits]
+      summary: Get a deposit by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 3001
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/DepositResponse' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/deposits/eligibility:
+    get:
+      tags: [Deposits]
+      summary: Check bidding eligibility for an auction (seller)
+      parameters:
+        - name: auction_id
+          in: query
+          required: true
+          schema: { type: integer }
+          example: 77
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/EligibilityResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/deposits/{id}/release:
+    post:
+      tags: [Deposits]
+      summary: Release a held deposit
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 3001
+      responses:
+        '200':
+          description: Released
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/ActionDepositResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/deposits/{id}/apply:
+    post:
+      tags: [Deposits]
+      summary: Apply (capture) a held deposit toward settlement
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 3001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApplyDepositRequest' }
+      responses:
+        '200':
+          description: Applied
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/ActionDepositResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/deposits/{id}/forfeit:
+    post:
+      tags: [Deposits]
+      summary: Forfeit a held deposit
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 3001
+      responses:
+        '200':
+          description: Forfeited
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/ActionDepositResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/deposits/{id}/cancel:
+    post:
+      tags: [Deposits]
+      summary: Cancel a deposit
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 3001
+      responses:
+        '200':
+          description: Cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/ActionDepositResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ============================ Ledger ============================
+  /api/v1/ledger/accounts:
+    post:
+      tags: [Ledger]
+      summary: Create a ledger account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateAccountRequest' }
+      responses:
+        '200':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/AccountResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    get:
+      tags: [Ledger]
+      summary: Get account(s) by owner
+      parameters:
+        - name: owner
+          in: query
+          required: false
+          schema: { type: string }
+          description: Owner key; if omitted, uses the authenticated user.
+          example: "1001"
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    oneOf:
+                      - $ref: '#/components/schemas/AccountResponse'
+                      - type: array
+                        items: { $ref: '#/components/schemas/AccountResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/ledger/accounts/{id}:
+    get:
+      tags: [Ledger]
+      summary: Get a ledger account by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 5001
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/AccountResponse' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/ledger/transfer:
+    post:
+      tags: [Ledger]
+      summary: Transfer between accounts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TransferRequest' }
+      responses:
+        '200':
+          description: Transferred
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/TransferResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/ledger/freeze:
+    post:
+      tags: [Ledger]
+      summary: Freeze funds in an account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FreezeRequest' }
+      responses:
+        '200':
+          description: Frozen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/OperationResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/ledger/unfreeze:
+    post:
+      tags: [Ledger]
+      summary: Unfreeze funds in an account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UnfreezeRequest' }
+      responses:
+        '200':
+          description: Unfrozen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/OperationResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/ledger/withdraw-from-frozen:
+    post:
+      tags: [Ledger]
+      summary: Withdraw from a frozen balance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WithdrawFromFrozenRequest' }
+      responses:
+        '200':
+          description: Withdrawn
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/OperationResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ============================ Catalog ============================
+  /api/v1/categories:
+    post:
+      tags: [Catalog]
+      summary: Create a category (seller)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateCategoryRequest' }
+      responses:
+        '200':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/CategoryResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    get:
+      tags: [Catalog]
+      summary: List categories (public)
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/CategoryListResponse' } }
+
+  /api/v1/categories/tree:
+    get:
+      tags: [Catalog]
+      summary: Get the full category tree (public)
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/CategoryTreeResponse' } }
+
+  /api/v1/categories/{id}/tree:
+    get:
+      tags: [Catalog]
+      summary: Get the subtree under a category (public)
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 12
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/CategoryTreeResponse' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/categories/{id}:
+    get:
+      tags: [Catalog]
+      summary: Get a category by id (public)
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 12
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/CategoryResponse' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Catalog]
+      summary: Update a category (seller)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 12
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateCategoryRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/CategoryResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Catalog]
+      summary: Delete a category (seller)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 12
+      responses:
+        '200': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/spus:
+    post:
+      tags: [Catalog]
+      summary: Create a SPU (seller)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateSpuRequest' }
+      responses:
+        '200':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/SpuResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    get:
+      tags: [Catalog]
+      summary: List SPUs (public)
+      security: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [draft, published, off_shelf] }
+          example: published
+        - name: category_id
+          in: query
+          required: false
+          schema: { type: integer }
+          example: 12
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/SpuListResponse' } }
+
+  /api/v1/spus/{id}:
+    get:
+      tags: [Catalog]
+      summary: Get a SPU by id (public)
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 55
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/SpuResponse' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Catalog]
+      summary: Update a SPU (seller)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 55
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateSpuRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/SpuResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/spus/{id}/publish:
+    put:
+      tags: [Catalog]
+      summary: Publish a SPU (seller)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 55
+      responses:
+        '200':
+          description: Published
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/SpuResponse' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/spus/{id}/off-shelf:
+    put:
+      tags: [Catalog]
+      summary: Take a SPU off shelf (seller)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 55
+      responses:
+        '200':
+          description: Off shelf
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/SpuResponse' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/spus/{id}/skus:
+    post:
+      tags: [Catalog]
+      summary: Create a SKU under a SPU (seller)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 55
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateSkuRequest' }
+      responses:
+        '200':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/SkuResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/skus/{id}:
+    get:
+      tags: [Catalog]
+      summary: Get a SKU by id (public)
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 7001
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/SkuResponse' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Catalog]
+      summary: Update a SKU (seller)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 7001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateSkuRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/SkuResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/skus/{id}/publish:
+    put:
+      tags: [Catalog]
+      summary: Publish a SKU (seller)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 7001
+      responses:
+        '200':
+          description: Published
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/SkuResponse' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/skus/{id}/off-shelf:
+    put:
+      tags: [Catalog]
+      summary: Take a SKU off shelf (seller)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 7001
+      responses:
+        '200':
+          description: Off shelf
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/SkuResponse' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ============================ Notifications / Watchlist ============================
+  /api/v1/notifications:
+    get:
+      tags: [Notifications]
+      summary: List the current user's notifications
+      parameters:
+        - name: unread
+          in: query
+          required: false
+          schema: { type: boolean }
+          description: If true, only unread notifications are returned.
+          example: true
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/NotificationListResponse' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/notifications/unread-count:
+    get:
+      tags: [Notifications]
+      summary: Get unread notification count
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/UnreadCountResponse' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/notifications/read-all:
+    post:
+      tags: [Notifications]
+      summary: Mark all notifications as read
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/MarkAllReadResponse' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/notifications/{id}:
+    post:
+      tags: [Notifications]
+      summary: Mark a notification as read
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 2001
+      responses:
+        '200':
+          description: Marked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/NotificationResponse' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Notifications]
+      summary: Delete a notification
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 2001
+      responses:
+        '204': { description: Deleted (no content) }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/notifications/preferences:
+    get:
+      tags: [Notifications]
+      summary: Get notification preferences
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/PreferencesResponse' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    put:
+      tags: [Notifications]
+      summary: Update notification preferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdatePreferencesRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/PreferencesResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/notifications/stream:
+    get:
+      tags: [Realtime]
+      summary: Server-Sent-Events stream of the user's notifications
+      description: |
+        Authenticated via the `token` query parameter (the browser EventSource API
+        cannot set headers), e.g. `?token=<access_token>`. Falls back to the
+        `Authorization: Bearer` header if the query param is absent.
+      security: []
+      parameters:
+        - name: token
+          in: query
+          required: false
+          schema: { type: string }
+          description: Access token (required by EventSource).
+          example: eyJhbGciOi...
+      responses:
+        '200':
+          description: SSE stream (text/event-stream).
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: "event: notification\ndata: {\"notification_id\":2001,\"title\":\"Deposit held\"}\n\n"
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/watchlists:
+    post:
+      tags: [Notifications]
+      summary: Add a SPU to the watchlist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateWatchRequest' }
+      responses:
+        '200':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/WatchResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    get:
+      tags: [Notifications]
+      summary: List the current user's watchlist
+      parameters:
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/WatchListResponse' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/watchlists/{spuId}:
+    delete:
+      tags: [Notifications]
+      summary: Remove a SPU from the watchlist
+      parameters:
+        - name: spuId
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 55
+      responses:
+        '204': { description: Deleted (no content) }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ============================ Payment ============================
+  /api/v1/payment/deposit:
+    post:
+      tags: [Payment]
+      summary: Create a recharge (face-to-face pay)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PaymentCreateDepositRequest' }
+      responses:
+        '200':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/PaymentCreateDepositResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/payment/deposit/{id}:
+    get:
+      tags: [Payment]
+      summary: Get a payment by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 6001
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/PaymentDepositResponse' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/payment/withdraw:
+    post:
+      tags: [Payment]
+      summary: Create an Alipay withdrawal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateWithdrawalRequest' }
+      responses:
+        '200':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/CreateWithdrawalResponse' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/payment/withdraw/{id}:
+    get:
+      tags: [Payment]
+      summary: Get a withdrawal by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 6101
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { data: { $ref: '#/components/schemas/WithdrawalResponse' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/payment/alipay/notify:
+    post:
+      tags: [Payment]
+      summary: Alipay async payment notification callback (public, server-to-server)
+      description: Called by Alipay; must NOT require authentication.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: { type: string }
+              description: Raw Alipay notify parameters (sign, out_tiz_no, trade_status, ...).
+      responses:
+        '200':
+          description: Acknowledged (responds with `success` to Alipay).
+          content:
+            text/plain:
+              schema: { type: string, example: success }
+
+  # ============================ Realtime (WebSocket) ============================
+  /ws/v1/auctions/{id}:
+    get:
+      tags: [Realtime]
+      summary: WebSocket stream of auction updates
+      description: |
+        Upgrade to WebSocket. Requires `Authorization: Bearer <token>` (or the
+        `token` query param). Pushes bid/price/state events for the auction.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 77
+        - name: token
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        '101': { description: Switching Protocols (WebSocket upgrade) }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /ws/v1/deposits:
+    get:
+      tags: [Realtime]
+      summary: WebSocket stream of the user's deposit events
+      description: "Upgrade to WebSocket; requires Authorization: Bearer <token>."
+      responses:
+        '101': { description: Switching Protocols (WebSocket upgrade) }
+        '401': { $ref: '#/components/responses/Unauthorized' }

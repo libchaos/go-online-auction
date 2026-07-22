@@ -22,6 +22,122 @@ func (_m *MockListingOutboxRepository) EXPECT() *MockListingOutboxRepository_Exp
 	return &MockListingOutboxRepository_Expecter{mock: &_m.Mock}
 }
 
+// ListUnpublished provides a mock function with given fields: ctx, limit
+func (_m *MockListingOutboxRepository) ListUnpublished(ctx context.Context, limit int) ([]ports.OutboxEvent, error) {
+	ret := _m.Called(ctx, limit)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListUnpublished")
+	}
+
+	var r0 []ports.OutboxEvent
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, int) ([]ports.OutboxEvent, error)); ok {
+		return rf(ctx, limit)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, int) []ports.OutboxEvent); ok {
+		r0 = rf(ctx, limit)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]ports.OutboxEvent)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, int) error); ok {
+		r1 = rf(ctx, limit)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockListingOutboxRepository_ListUnpublished_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListUnpublished'
+type MockListingOutboxRepository_ListUnpublished_Call struct {
+	*mock.Call
+}
+
+// ListUnpublished is a helper method to define mock.On call
+//   - ctx context.Context
+//   - limit int
+func (_e *MockListingOutboxRepository_Expecter) ListUnpublished(ctx interface{}, limit interface{}) *MockListingOutboxRepository_ListUnpublished_Call {
+	return &MockListingOutboxRepository_ListUnpublished_Call{Call: _e.mock.On("ListUnpublished", ctx, limit)}
+}
+
+func (_c *MockListingOutboxRepository_ListUnpublished_Call) Run(run func(ctx context.Context, limit int)) *MockListingOutboxRepository_ListUnpublished_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(int))
+	})
+	return _c
+}
+
+func (_c *MockListingOutboxRepository_ListUnpublished_Call) Return(_a0 []ports.OutboxEvent, _a1 error) *MockListingOutboxRepository_ListUnpublished_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockListingOutboxRepository_ListUnpublished_Call) RunAndReturn(run func(context.Context, int) ([]ports.OutboxEvent, error)) *MockListingOutboxRepository_ListUnpublished_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// MarkPublished provides a mock function with given fields: ctx, id
+func (_m *MockListingOutboxRepository) MarkPublished(ctx context.Context, id uint64) (bool, error) {
+	ret := _m.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for MarkPublished")
+	}
+
+	var r0 bool
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint64) (bool, error)); ok {
+		return rf(ctx, id)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uint64) bool); ok {
+		r0 = rf(ctx, id)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uint64) error); ok {
+		r1 = rf(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockListingOutboxRepository_MarkPublished_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'MarkPublished'
+type MockListingOutboxRepository_MarkPublished_Call struct {
+	*mock.Call
+}
+
+// MarkPublished is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id uint64
+func (_e *MockListingOutboxRepository_Expecter) MarkPublished(ctx interface{}, id interface{}) *MockListingOutboxRepository_MarkPublished_Call {
+	return &MockListingOutboxRepository_MarkPublished_Call{Call: _e.mock.On("MarkPublished", ctx, id)}
+}
+
+func (_c *MockListingOutboxRepository_MarkPublished_Call) Run(run func(ctx context.Context, id uint64)) *MockListingOutboxRepository_MarkPublished_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uint64))
+	})
+	return _c
+}
+
+func (_c *MockListingOutboxRepository_MarkPublished_Call) Return(_a0 bool, _a1 error) *MockListingOutboxRepository_MarkPublished_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockListingOutboxRepository_MarkPublished_Call) RunAndReturn(run func(context.Context, uint64) (bool, error)) *MockListingOutboxRepository_MarkPublished_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Save provides a mock function with given fields: ctx, event
 func (_m *MockListingOutboxRepository) Save(ctx context.Context, event ports.OutboxEvent) error {
 	ret := _m.Called(ctx, event)

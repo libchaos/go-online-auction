@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -40,9 +41,16 @@ func New(cfg Config) (*Server, error) {
 
 	// Default middleware stack
 	router.Use(middleware.RequestID)
-	router.Use(middleware.RealIP)
 	router.Use(middleware.Logger)
 	router.Use(middleware.Recoverer)
+
+	// Security: per-IP rate limiting (~60 req/min, burst 20) and RED metrics.
+	// Rate limiting keys on r.RemoteAddr directly (no header-based RealIP) to
+	// avoid client-spoofable X-Forwarded-For bypassing the limiter.
+	router.Use(RateLimit(60, 20, time.Minute)) //nolint:mnd // rate-limit defaults are fixed operational constants
+	// Observability: per-request trace span (telemetry module) and RED metrics.
+	router.Use(Trace)
+	router.Use(Metrics)
 
 	// CORS middleware
 	router.Use(cors.Handler(cors.Options{

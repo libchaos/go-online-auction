@@ -3,13 +3,16 @@ package mapper
 import (
 	"auction/internal/modules/auction/domain/enum"
 	"auction/internal/modules/auction/domain/model"
+	"auction/internal/modules/auction/domain/strategy"
 	"auction/internal/modules/auction/infra/sqlcgen"
 )
 
-type AuctionMapper struct{}
+type AuctionMapper struct {
+	resolver strategy.Resolver
+}
 
-func NewAuctionMapper() *AuctionMapper {
-	return &AuctionMapper{}
+func NewAuctionMapper(resolver strategy.Resolver) *AuctionMapper {
+	return &AuctionMapper{resolver: resolver}
 }
 
 func (m *AuctionMapper) ToDomain(a sqlcgen.Auction) (model.AuctionModel, error) {
@@ -43,6 +46,7 @@ func (m *AuctionMapper) ToDomain(a sqlcgen.Auction) (model.AuctionModel, error) 
 		uint64(a.Version),
 		a.CreatedAt,
 		a.UpdatedAt,
+		m.resolver,
 	)
 }
 

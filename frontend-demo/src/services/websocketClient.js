@@ -11,7 +11,7 @@ import ReconnectingWebSocket from 'reconnecting-websocket';
  * @returns {ReconnectingWebSocket} WebSocket instance
  */
 export const createAuctionWebSocket = (auctionId, callbacks = {}) => {
-  const wsBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080')
+  const wsBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:9000')
     .replace('http://', 'ws://')
     .replace('https://', 'wss://')
     .replace('/api/v1', '');

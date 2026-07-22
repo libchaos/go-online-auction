@@ -65,6 +65,18 @@ type Category struct {
 	Path      string
 }
 
+type ListingOutbox struct {
+	ID            int64
+	EventID       string
+	EventType     string
+	SchemaVersion int32
+	Subject       string
+	Payload       []byte
+	OccurredAt    time.Time
+	CreatedAt     time.Time
+	PublishedAt   *time.Time
+}
+
 type Sku struct {
 	ID           int64
 	SpuID        int64

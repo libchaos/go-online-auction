@@ -79,7 +79,7 @@ func generatePgxDatabaseDSN(cfg Config) (string, error) {
 	// Build DSN with connection pool settings
 	hostPort := net.JoinHostPort(cfg.Host, strconv.Itoa(int(cfg.Port)))
 	dsn := fmt.Sprintf(
-		"postgres://%s:%s@%s/%s?sslmode=%s&timezone=UTC",
+		"postgres://%s:%s@%s/%s?sslmode=%s&timezone=Asia/Shanghai",
 		cfg.User,
 		cfg.Password,
 		hostPort,
@@ -102,7 +102,7 @@ func GeneratePostgresDatabaseDSN(cfg Config) (string, error) {
 	}
 	hostPort := net.JoinHostPort(cfg.Host, strconv.Itoa(int(cfg.Port)))
 	return fmt.Sprintf(
-		"postgres://%s:%s@%s/%s?sslmode=disable&TimeZone=UTC",
+		"postgres://%s:%s@%s/%s?sslmode=disable&TimeZone=Asia/Shanghai",
 		cfg.User,
 		cfg.Password,
 		hostPort,

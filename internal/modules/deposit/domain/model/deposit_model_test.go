@@ -211,7 +211,7 @@ func TestDepositModel_Cancel(t *testing.T) {
 		assert.Equal(t, enum.EnumDepositStatusReleased, status.String())
 	})
 
-	t.Run("should reject cancel when held", func(t *testing.T) {
+	t.Run("should move held to released", func(t *testing.T) {
 		// Arrange
 		deposit := newHeldDeposit(t)
 
@@ -219,7 +219,9 @@ func TestDepositModel_Cancel(t *testing.T) {
 		err := deposit.Cancel()
 
 		// Assert
-		assert.ErrorIs(t, err, errs.ErrInvalidDepositTransition)
+		require.NoError(t, err)
+		status := deposit.Status()
+		assert.Equal(t, enum.EnumDepositStatusReleased, status.String())
 	})
 }
 

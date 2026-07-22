@@ -47,6 +47,18 @@ var (
 		http.StatusConflict,
 		nil,
 	)
+	ErrInvalidPolicy = errs.New(
+		"USER_14",
+		"Invalid policy: sub, obj and act are required",
+		http.StatusBadRequest,
+		nil,
+	)
+	ErrInvalidRoleAssignment = errs.New(
+		"USER_15",
+		"Invalid role assignment: user id must be greater than zero and role must be admin, seller or bidder",
+		http.StatusBadRequest,
+		nil,
+	)
 )
 
 var domainToHTTPErrorMap = []struct {
@@ -68,6 +80,8 @@ var domainToHTTPErrorMap = []struct {
 	{domainerrs.ErrRefreshTokenNotFound, ErrRefreshTokenInvalid},
 	{domainerrs.ErrRefreshTokenInvalid, ErrRefreshTokenInvalid},
 	{domainerrs.ErrConcurrencyConflict, ErrOptimisticLockFailed},
+	{domainerrs.ErrInvalidPolicy, ErrInvalidPolicy},
+	{domainerrs.ErrInvalidRoleAssignment, ErrInvalidRoleAssignment},
 }
 
 func MapDomainError(err error) error {

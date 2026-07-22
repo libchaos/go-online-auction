@@ -3,6 +3,7 @@ package database
 import (
 	"auction/internal/shared/modules/config"
 	"auction/pkg/database"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

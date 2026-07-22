@@ -7,6 +7,7 @@ import (
 	"auction/internal/modules/auction/domain/enum"
 	"auction/internal/modules/auction/domain/errs"
 	"auction/internal/modules/auction/domain/model"
+	"auction/internal/modules/auction/domain/strategy"
 	"github.com/stretchr/testify/require"
 )
 
@@ -67,6 +68,7 @@ func TestNewAuctionModelWithMode_ScheduledStartTime(t *testing.T) {
 			false,
 			300,
 			startTime,
+			strategy.NewDefaultResolver(),
 		)
 	}
 

@@ -6,4 +6,27 @@ outpkg: "mocks"
 all: true
 recursive: true
 packages:
+    # Broad generation for every interface across the module tree.
     auction/:
+    # Auction exposes `OutboxRepository` while deposit exposes
+    # `DepositOutboxRepository` and listing exposes `ListingOutboxRepository`, so
+    # the generated filenames no longer collide. The explicit overrides below
+    # keep the mapping deterministic and self-documenting. Keep in sync with the
+    # generated mocks: mock_OutboxRepository.go (auction),
+    # mock_DepositOutboxRepository.go (deposit), mock_ListingOutboxRepository.go
+    # (listing).
+    auction/internal/modules/auction/ports:
+        interfaces:
+            OutboxRepository:
+                filename: "mock_OutboxRepository.go"
+                mockname: "MockOutboxRepository"
+    auction/internal/modules/deposit/ports:
+        interfaces:
+            DepositOutboxRepository:
+                filename: "mock_DepositOutboxRepository.go"
+                mockname: "MockDepositOutboxRepository"
+    auction/internal/modules/listing/ports:
+        interfaces:
+            ListingOutboxRepository:
+                filename: "mock_ListingOutboxRepository.go"
+                mockname: "MockListingOutboxRepository"

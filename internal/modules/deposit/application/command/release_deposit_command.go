@@ -6,6 +6,7 @@ import (
 	domainevent "auction/internal/modules/deposit/domain/event"
 	"auction/internal/modules/deposit/infra/event/envelope"
 	"auction/internal/modules/deposit/ports"
+	ledgerports "auction/internal/modules/ledger/ports"
 	"auction/internal/shared/modules/logger"
 )
 
@@ -21,20 +22,17 @@ type ReleaseDepositCommandOutput struct {
 const depositReleasedStatus = "released"
 
 type ReleaseDepositCommand struct {
-	uowFactory  ports.DepositUnitOfWorkFactory
-	paymentPort ports.PaymentPort
-	logger      logger.Logger
+	uowFactory ports.DepositUnitOfWorkFactory
+	logger     logger.Logger
 }
 
 func NewReleaseDepositCommand(
 	uowFactory ports.DepositUnitOfWorkFactory,
-	paymentPort ports.PaymentPort,
 	logger logger.Logger,
 ) *ReleaseDepositCommand {
 	return &ReleaseDepositCommand{
-		uowFactory:  uowFactory,
-		paymentPort: paymentPort,
-		logger:      logger,
+		uowFactory: uowFactory,
+		logger:     logger,
 	}
 }
 
@@ -57,12 +55,25 @@ func (command *ReleaseDepositCommand) Execute(
 		return ReleaseDepositCommandOutput{}, releaseErr
 	}
 
-	if externalErr := command.paymentPort.Release(ctx, deposit.ExternalReference()); externalErr != nil {
-		command.logger.Error().Err(externalErr).
-			Uint64("deposit_id", deposit.ID()).
-			Msg("failed to release held funds with payment provider")
+	ledger := unitOfWork.LedgerRepository()
+	accountID, accountErr := buyerLedgerAccountID(ctx, ledger, deposit.UserID(), deposit.Currency())
+	if accountErr != nil {
+		return ReleaseDepositCommandOutput{}, accountErr
+	}
 
-		return ReleaseDepositCommandOutput{}, externalErr
+	_, unfreezeErr := ledger.Unfreeze(ctx, ledgerports.UnfreezeInput{
+		AccountID:      accountID,
+		Amount:         deposit.Amount().AmountInCents(),
+		IdempotencyKey: depositLedgerIdempotencyKey("release", input.DepositID),
+		Reference:      deposit.Reference(),
+		Description:    "deposit released back to available balance",
+	})
+	if unfreezeErr != nil {
+		command.logger.Error().Err(unfreezeErr).
+			Uint64("deposit_id", deposit.ID()).
+			Msg("failed to unfreeze deposit funds in ledger")
+
+		return ReleaseDepositCommandOutput{}, unfreezeErr
 	}
 
 	persisted, saveErr := unitOfWork.DepositRepository().Update(ctx, deposit)

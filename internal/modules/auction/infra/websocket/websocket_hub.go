@@ -9,6 +9,7 @@ import (
 
 	"auction/internal/modules/auction/infra/messaging"
 	"auction/internal/shared/modules/logger"
+
 	"github.com/gorilla/websocket"
 )
 

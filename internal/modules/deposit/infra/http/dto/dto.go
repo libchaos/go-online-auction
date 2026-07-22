@@ -9,6 +9,7 @@ type CreateDepositRequest struct {
 type CreateDepositResponse struct {
 	DepositID uint64 `json:"deposit_id"`
 	Status    string `json:"status"`
+	AccountID uint64 `json:"account_id"`
 }
 
 type DepositResponse struct {

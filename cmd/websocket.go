@@ -5,6 +5,8 @@ import (
 	"go.uber.org/fx"
 
 	"auction/internal/modules/auction"
+	"auction/internal/modules/deposit"
+	"auction/internal/modules/listing"
 	"auction/internal/shared/modules/config"
 	"auction/internal/shared/modules/database"
 	"auction/internal/shared/modules/httpserver"
@@ -26,6 +28,9 @@ var websocketCmd = &cobra.Command{
 			auction.Module,
 			fx.Invoke(
 				auction.RegisterWebsocketRoutes,
+				auction.RegisterOutboxRelay,
+				deposit.RegisterOutboxRelay,
+				listing.RegisterOutboxRelay,
 			),
 		)
 		app.Run()

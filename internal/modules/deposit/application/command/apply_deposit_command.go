@@ -8,6 +8,7 @@ import (
 	"auction/internal/modules/deposit/domain/model"
 	"auction/internal/modules/deposit/infra/event/envelope"
 	"auction/internal/modules/deposit/ports"
+	ledgerports "auction/internal/modules/ledger/ports"
 	"auction/internal/shared/modules/logger"
 )
 
@@ -24,20 +25,17 @@ type ApplyDepositCommandOutput struct {
 const depositAppliedStatus = "applied"
 
 type ApplyDepositCommand struct {
-	uowFactory  ports.DepositUnitOfWorkFactory
-	paymentPort ports.PaymentPort
-	logger      logger.Logger
+	uowFactory ports.DepositUnitOfWorkFactory
+	logger     logger.Logger
 }
 
 func NewApplyDepositCommand(
 	uowFactory ports.DepositUnitOfWorkFactory,
-	paymentPort ports.PaymentPort,
 	logger logger.Logger,
 ) *ApplyDepositCommand {
 	return &ApplyDepositCommand{
-		uowFactory:  uowFactory,
-		paymentPort: paymentPort,
-		logger:      logger,
+		uowFactory: uowFactory,
+		logger:     logger,
 	}
 }
 
@@ -69,12 +67,13 @@ func (command *ApplyDepositCommand) Execute(
 		return ApplyDepositCommandOutput{}, applyErr
 	}
 
-	if captureErr := command.paymentPort.Capture(ctx, deposit.ExternalReference(), captureAmount); captureErr != nil {
-		command.logger.Error().Err(captureErr).
+	ledger := unitOfWork.LedgerRepository()
+	if settleErr := command.settleToPlatform(ctx, ledger, deposit, captureAmount); settleErr != nil {
+		command.logger.Error().Err(settleErr).
 			Uint64("deposit_id", deposit.ID()).
-			Msg("failed to capture held funds with payment provider")
+			Msg("failed to withdraw frozen deposit funds in ledger")
 
-		return ApplyDepositCommandOutput{}, captureErr
+		return ApplyDepositCommandOutput{}, settleErr
 	}
 
 	persisted, saveErr := unitOfWork.DepositRepository().Update(ctx, deposit)
@@ -107,4 +106,32 @@ func (command *ApplyDepositCommand) Execute(
 		DepositID: persisted.ID(),
 		Status:    depositAppliedStatus,
 	}, nil
+}
+
+func (command *ApplyDepositCommand) settleToPlatform(
+	ctx context.Context,
+	ledger ledgerports.LedgerRepository,
+	deposit model.DepositModel,
+	captureAmount model.MoneyModel,
+) error {
+	buyerAccountID, accountErr := buyerLedgerAccountID(ctx, ledger, deposit.UserID(), deposit.Currency())
+	if accountErr != nil {
+		return accountErr
+	}
+
+	platformAccountID, platformErr := platformLedgerAccountID(ctx, ledger, deposit.Currency())
+	if platformErr != nil {
+		return platformErr
+	}
+
+	_, withdrawErr := ledger.WithdrawFromFrozen(ctx, ledgerports.WithdrawFromFrozenInput{
+		AccountID:             buyerAccountID,
+		CounterpartyAccountID: platformAccountID,
+		Amount:                captureAmount.AmountInCents(),
+		IdempotencyKey:        depositLedgerIdempotencyKey("apply", deposit.ID()),
+		Reference:             deposit.Reference(),
+		Description:           "deposit applied to winning bid, settled to platform",
+	})
+
+	return withdrawErr
 }

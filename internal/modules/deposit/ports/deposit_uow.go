@@ -1,10 +1,15 @@
 package ports
 
-import "context"
+import (
+	"context"
+
+	ledgerports "auction/internal/modules/ledger/ports"
+)
 
 type DepositUnitOfWork interface {
 	DepositRepository() DepositRepository
-	OutboxRepository() OutboxRepository
+	LedgerRepository() ledgerports.LedgerRepository
+	OutboxRepository() DepositOutboxRepository
 	Complete(ctx context.Context) error
 	Rollback(ctx context.Context) error
 }

@@ -3,9 +3,11 @@ package command
 import (
 	"context"
 
+	"auction/internal/modules/deposit/domain/enum"
 	domainevent "auction/internal/modules/deposit/domain/event"
 	"auction/internal/modules/deposit/infra/event/envelope"
 	"auction/internal/modules/deposit/ports"
+	ledgerports "auction/internal/modules/ledger/ports"
 	"auction/internal/shared/modules/logger"
 )
 
@@ -48,8 +50,34 @@ func (command *CancelDepositCommand) Execute(
 		return CancelDepositCommandOutput{}, findErr
 	}
 
+	currentStatus := deposit.Status()
+	wasHeld := currentStatus.String() == enum.EnumDepositStatusHeld
+
 	if cancelErr := deposit.Cancel(); cancelErr != nil {
 		return CancelDepositCommandOutput{}, cancelErr
+	}
+
+	if wasHeld {
+		ledger := unitOfWork.LedgerRepository()
+		accountID, accountErr := buyerLedgerAccountID(ctx, ledger, deposit.UserID(), deposit.Currency())
+		if accountErr != nil {
+			return CancelDepositCommandOutput{}, accountErr
+		}
+
+		_, unfreezeErr := ledger.Unfreeze(ctx, ledgerports.UnfreezeInput{
+			AccountID:      accountID,
+			Amount:         deposit.Amount().AmountInCents(),
+			IdempotencyKey: depositLedgerIdempotencyKey("cancel", input.DepositID),
+			Reference:      deposit.Reference(),
+			Description:    "deposit cancelled, released back to available balance",
+		})
+		if unfreezeErr != nil {
+			command.logger.Error().Err(unfreezeErr).
+				Uint64("deposit_id", deposit.ID()).
+				Msg("failed to unfreeze deposit funds in ledger on cancel")
+
+			return CancelDepositCommandOutput{}, unfreezeErr
+		}
 	}
 
 	persisted, saveErr := unitOfWork.DepositRepository().Update(ctx, deposit)

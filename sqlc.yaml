@@ -74,3 +74,57 @@ sql:
             go_type:
               type: "time.Time"
               pointer: true
+  - engine: "postgresql"
+    schema: "migrations"
+    queries: "internal/modules/ledger/infra/query"
+    gen:
+      go:
+        package: "sqlcgen"
+        out: "internal/modules/ledger/infra/sqlcgen"
+        sql_package: "pgx/v5"
+        emit_pointers_for_null_types: true
+        omit_unused_structs: true
+        overrides:
+          - db_type: "timestamptz"
+            go_type: "time.Time"
+          - db_type: "timestamptz"
+            nullable: true
+            go_type:
+              type: "time.Time"
+              pointer: true
+  - engine: "postgresql"
+    schema: "migrations"
+    queries: "internal/modules/payment/infra/query"
+    gen:
+      go:
+        package: "sqlcgen"
+        out: "internal/modules/payment/infra/sqlcgen"
+        sql_package: "pgx/v5"
+        emit_pointers_for_null_types: true
+        omit_unused_structs: true
+        overrides:
+          - db_type: "timestamptz"
+            go_type: "time.Time"
+          - db_type: "timestamptz"
+            nullable: true
+            go_type:
+              type: "time.Time"
+              pointer: true
+  - engine: "postgresql"
+    schema: "migrations"
+    queries: "internal/modules/notification/infra/query"
+    gen:
+      go:
+        package: "sqlcgen"
+        out: "internal/modules/notification/infra/sqlcgen"
+        sql_package: "pgx/v5"
+        emit_pointers_for_null_types: true
+        omit_unused_structs: true
+        overrides:
+          - db_type: "timestamptz"
+            go_type: "time.Time"
+          - db_type: "timestamptz"
+            nullable: true
+            go_type:
+              type: "time.Time"
+              pointer: true

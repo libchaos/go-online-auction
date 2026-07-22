@@ -10,7 +10,7 @@ import (
 	"auction/internal/modules/deposit/domain/errs"
 	"auction/internal/modules/deposit/domain/model"
 	"auction/internal/modules/deposit/ports"
-	mocks "auction/internal/modules/deposit/testmocks"
+	"auction/tests/mocks"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )

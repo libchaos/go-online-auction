@@ -8,6 +8,7 @@ import (
 
 	"auction/internal/modules/auction/domain/enum"
 	"auction/internal/modules/auction/domain/model"
+	"auction/internal/modules/auction/domain/strategy"
 	"auction/internal/modules/auction/infra/mapper"
 	"auction/internal/modules/auction/infra/sqlcgen"
 )
@@ -18,7 +19,7 @@ type AuctionMapperTestSuite struct {
 }
 
 func (s *AuctionMapperTestSuite) SetupTest() {
-	s.sut = mapper.NewAuctionMapper()
+	s.sut = mapper.NewAuctionMapper(strategy.NewDefaultResolver())
 }
 
 func TestAuctionMapperSuite(t *testing.T) {

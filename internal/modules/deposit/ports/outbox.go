@@ -15,7 +15,7 @@ type OutboxEvent struct {
 	OccurredAt    time.Time
 }
 
-type OutboxRepository interface {
+type DepositOutboxRepository interface {
 	Save(ctx context.Context, event OutboxEvent) error
 	ListUnpublished(ctx context.Context, limit int) ([]OutboxEvent, error)
 	MarkPublished(ctx context.Context, id uint64) (bool, error)

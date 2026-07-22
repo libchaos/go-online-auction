@@ -94,25 +94,24 @@ func (resolver *mapResolver) ForMode(mode enum.TradingModeEnum) (TradingStrategy
 	return nil, errs.ErrUnsupportedTradingMode
 }
 
-var defaultResolver Resolver
-
-func SetResolver(resolver Resolver) {
-	defaultResolver = resolver
+// DefaultStrategies returns the built-in trading strategies for every mode.
+// It is a pure constructor (no package-level mutable state) used as the source
+// of the application-wide resolver and as a safe fallback for models restored
+// outside the dependency-injection graph (e.g. in tests).
+func DefaultStrategies() []TradingStrategy {
+	return []TradingStrategy{
+		NewEnglishAuctionStrategy(),
+		NewDutchAuctionStrategy(),
+		NewSealedBidAuctionStrategy(),
+		NewVickreyAuctionStrategy(),
+		NewFixedPriceAuctionStrategy(),
+		NewEbayProxyAuctionStrategy(),
+	}
 }
 
-func GetResolver() Resolver {
-	if defaultResolver == nil {
-		defaultResolver = NewResolver([]TradingStrategy{
-			NewEnglishAuctionStrategy(),
-			NewDutchAuctionStrategy(),
-			NewSealedBidAuctionStrategy(),
-			NewVickreyAuctionStrategy(),
-			NewFixedPriceAuctionStrategy(),
-			NewEbayProxyAuctionStrategy(),
-		})
-	}
-
-	return defaultResolver
+// NewDefaultResolver builds the application-wide resolver from DefaultStrategies.
+func NewDefaultResolver() Resolver {
+	return NewResolver(DefaultStrategies())
 }
 
 func mode(value string) enum.TradingModeEnum {

@@ -17,7 +17,6 @@ import (
 	"auction/internal/modules/auction/infra/messaging"
 	"auction/internal/modules/auction/ports"
 	depositerrs "auction/internal/modules/deposit/domain/errs"
-	depositmocks "auction/internal/modules/deposit/testmocks"
 	"auction/tests/mocks"
 )
 
@@ -29,7 +28,7 @@ type BidProcessorTestSuite struct {
 	auctionRepositoryMock *mocks.MockAuctionRepository
 	bidRepositoryMock     *mocks.MockBidRepository
 	outboxRepositoryMock  *mocks.MockOutboxRepository
-	depositGuardMock      *depositmocks.MockDepositGuard
+	depositGuardMock      *mocks.MockDepositGuard
 	loggerMock            *mocks.MockLogger
 }
 
@@ -39,11 +38,11 @@ func (s *BidProcessorTestSuite) SetupTest() {
 	s.auctionRepositoryMock = mocks.NewMockAuctionRepository(s.T())
 	s.bidRepositoryMock = mocks.NewMockBidRepository(s.T())
 	s.outboxRepositoryMock = mocks.NewMockOutboxRepository(s.T())
-	s.depositGuardMock = depositmocks.NewMockDepositGuard(s.T())
+	s.depositGuardMock = mocks.NewMockDepositGuard(s.T())
 	s.loggerMock = mocks.NewMockLogger(s.T())
 
 	// js is only used by Start/sendToDLQ, which these tests never reach.
-	s.sut = messaging.NewBidProcessor(nil, s.uowFactoryMock, strategy.GetResolver(), s.depositGuardMock, s.loggerMock)
+	s.sut = messaging.NewBidProcessor(nil, s.uowFactoryMock, strategy.NewDefaultResolver(), s.depositGuardMock, s.loggerMock)
 }
 
 func TestBidProcessorSuite(t *testing.T) {

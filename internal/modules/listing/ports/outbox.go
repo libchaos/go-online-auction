@@ -5,10 +5,12 @@ import (
 	"time"
 )
 
-// OutboxEvent is a serialized domain event recorded in the shared transactional
-// outbox (event_outbox). The listing module only writes rows; the outbox relay
-// owned by the auction module drains all pending rows regardless of subject.
+// OutboxEvent is a serialized domain event recorded in the listing transactional
+// outbox (listing_outbox). The listing module owns both the outbox table and its
+// own relay that drains it, so the two can be deployed independently of other
+// bounded contexts.
 type OutboxEvent struct {
+	ID            uint64
 	EventID       string
 	EventType     string
 	SchemaVersion int
@@ -18,7 +20,9 @@ type OutboxEvent struct {
 }
 
 // ListingOutboxRepository persists listing events in the transactional outbox
-// within the ambient transaction.
+// within the ambient transaction and drains them via the outbox relay.
 type ListingOutboxRepository interface {
 	Save(ctx context.Context, event OutboxEvent) error
+	ListUnpublished(ctx context.Context, limit int) ([]OutboxEvent, error)
+	MarkPublished(ctx context.Context, id uint64) (bool, error)
 }

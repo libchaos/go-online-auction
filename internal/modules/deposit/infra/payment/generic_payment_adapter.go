@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -106,6 +107,9 @@ func (adapter *GenericPaymentAdapter) do(ctx context.Context, path string, body 
 	response, responseErr := adapter.client.Do(request)
 	if responseErr != nil {
 		return "", fmt.Errorf("payment provider request failed: %w", responseErr)
+	}
+	if response == nil {
+		return "", errors.New("payment provider returned an empty response")
 	}
 	defer func() { _ = response.Body.Close() }()
 
