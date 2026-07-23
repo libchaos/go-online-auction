@@ -40,4 +40,10 @@
 - 命令：`go run ./main.go all`（:9000）；子命令 `auction`/`websocket`/`db:migrate`(+`:down`/`:status`)/`create-admin --name --email --password`。
 - **启动顺序**：①起 Postgres+NATS(-js) → ②`cp .env.example .env`（已存在则跳过）→ ③`db:migrate`（含 000028）→ ④`create-admin` → ⑤**g-RBAC 引导**：用 admin 调 `POST /api/v1/rbac/role-assignments {user_id,role:"admin"}` 给自己绑 g（否则资源端点 403）。
 - NATS stream 由 `nats.Module.OnStart` 的 `CreateOrUpdateStreams` 自举，无需手动建。
-- 前端（可选）：`cd frontend-demo && npm install && npm run dev -- --host`（:5173，`VITE_API_BASE_URL=http://localhost:9000/api/v1`）。
+- 前端（TanStack Start，已建）：`web/` 目录。依赖 `openapi-typescript`+`openapi-fetch`，`npm run gen` 由 `docs/openapi.yaml` 生成 `src/lib/api.gen.ts`。`vite.config.ts` 代理 `/api`→`localhost:9000`、`/ws`→`ws://localhost:9000`。启动：`cd web && npm run dev`（:3000）。详见 `2026-07-23.md`。
+
+## 前端工程 web/ 关键约定
+- **响应双层 `data` 包络**：后端 `internal/shared/sdk/http/response.NewEnvelope(data)` 把所有 200 包成 `{ "data": <payload> }`，openapi 的 200 schema 又包一层 `data`，故响应体是 `{ data: { data: <payload> } }`。前端取数必须 `const payload = (await client.GET(...)).data?.data`，再访问 `payload.xxx`（auctions 列表=`payload.auctions`、登录=`payload.access_token`、详情=`payload.auction`/`payload.bids` 等）。
+- **`GET /api/v1/deposits` 无查询参数**（openapi 未定义 limit/offset），调用时不要传 `params.query`。
+- **鉴权/实时**：Token 存 localStorage+cookie，auth 中间件注入 `Bearer`；WebSocket 无法带鉴权头，故拍卖详情用 `setInterval` 4s 轮询，通知用 SSE `GET /api/v1/notifications/stream?token=<jwt>`。
+- 类型检查 `npm run typecheck`、构建 `npm run build` 均已验证通过；`src/routeTree.gen.ts` 构建期自动生成（已 gitignore）。
